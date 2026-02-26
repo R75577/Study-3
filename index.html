@@ -1,0 +1,195 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Perception Study</title>
+
+  <!-- jsPsych core styles -->
+  <link rel="stylesheet" href="./jspsych.css" />
+  <link rel="icon" href="data:,"><!-- silence favicon warning -->
+
+  <!-- Layout + slider styling -->
+  <style>
+  /* Lock the experiment to one viewport and stop page-level scrolling */
+  html, body { height: 100svh; margin: 0; overflow: hidden; }
+
+  /* Stage = vertical stack: image (top) + form (bottom) */
+  .jspsych-content {
+    height: 100svh;
+    max-height: 100svh;
+    box-sizing: border-box;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  /* The image sits inside this box (height set by JS to 40% of viewport). */
+  .preamble-wrap {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  .stimulus-image {
+    max-width: 100%;
+    max-height: 100% !important;
+    width: auto; height: auto;
+    object-fit: contain;
+    border-radius: 8px;
+    display: block;
+  }
+
+  /* Form takes remaining space; we prevent scroll and let JS scale content */
+  .jspsych-content form {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;   /* IMPORTANT: no internal scroll; JS scales instead */
+  }
+
+  /* Cosmetic details for the question area */
+  .q-block { border-top: 2px solid #d5d5d5; padding-top: 10px; }
+  .q { margin: 8px 0; }
+  .q-title {
+    margin: 0 0 4px;
+    font-weight: 600;
+    text-align: center;
+    font-size: clamp(12px, 1.7svh, 17px);
+  }
+
+  /* ===== Slider appearance tuning ===== */
+  .slider-row {
+    max-width: 900px;
+    margin: 0 auto 10px;
+  }
+
+  .slider {
+    width: 98%;
+    height: 1.2em;
+  }
+
+  .slider-ticks {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0;
+    margin-top: 6px;
+    font-size: clamp(12px, 2.1svh, 18px);
+    line-height: 1.2;
+  }
+
+  .slider-ticks span {
+    text-align: center;
+    font-weight: 400; /* normal numbers */
+  }
+
+  .slider-ticks small {
+    display: block;
+    font-size: clamp(12px, 1.8svh, 17px);
+    font-weight: 500;
+  }
+
+  body { font-size: clamp(12px, 4.0svh, 18px); }
+
+  /* ===== Center instruction/intro/thank-you pages ONLY (class toggled in JS) ===== */
+  .jspsych-content.instructions-mode {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100svh;
+    box-sizing: border-box;
+    padding: 40px 20px 90px;
+    overflow: hidden;
+    text-align: center;
+  }
+
+  .jspsych-content.instructions-mode .jspsych-instructions,
+  .jspsych-content.instructions-mode .center {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .jspsych-content.instructions-mode .jspsych-instructions-nav,
+  .jspsych-content.instructions-mode .jspsych-btn {
+    position: static !important;
+    align-self: center;
+    margin-top: 20px;
+    margin-bottom: 0;
+  }
+
+  .jspsych-content.instructions-mode h2 { margin-bottom: 12px; }
+  .jspsych-content.instructions-mode p  { margin: 10px auto; line-height: 1.5; }
+
+  /* Center ONLY the fullscreen page */
+  .jspsych-content.fullscreen-mode {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100svh;
+    box-sizing: border-box;
+    padding: 40px 20px 90px;
+    text-align: center;
+    overflow: hidden;
+  }
+
+  .fs-message {
+    max-width: 800px;
+    margin: 0 auto;
+    font-size: clamp(14px, 2svh, 18px);
+    line-height: 1.5;
+  }
+
+  /* ===== Slider visual feedback only (no change to questions) ===== */
+
+  /* Default: slider looks pale / inactive */
+  .slider {
+    accent-color: #c0c0c0;   /* light grey track + thumb */
+    opacity: 0.5;
+    transition: all 0.15s ease;
+  }
+
+  /* After participant has used the slider at least once */
+  .slider.touched {
+    accent-color: #000000;   /* strong dark track + thumb */
+    opacity: 1;
+  }
+  </style>
+</head>
+<body>
+
+  <!-- jsPsych core + required plugins -->
+  <script src="./jspsych.js"></script>
+  <script src="./plugins/plugin-instructions.js"></script>
+  <script src="./plugins/plugin-preload.js"></script>
+  <script src="./plugins/plugin-survey-html-form.js"></script>
+  <script src="./plugins/plugin-fullscreen.js"></script>
+
+  <!-- Firebase (compat SDKs so they work in plain script tags) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <!-- 🔧 Your Firebase config -->
+  <script>
+    window.FIREBASE_CONFIG = {
+      apiKey: "AIzaSyC3q8mReVXK75yirx1FM89e1y5TZyw0sIo",
+      authDomain: "my-height-study.firebaseapp.com",
+      databaseURL: "https://my-height-study-default-rtdb.firebaseio.com",
+      projectId: "my-height-study",
+      storageBucket: "my-height-study.appspot.com",
+      messagingSenderId: "623828095541",
+      appId: "1:623828095541:web:a9bf0e779534230ab7977c"
+    };
+  </script>
+
+  <!-- Your experiment (must be last) -->
+  <script src="./experiment.js"></script>
+</body>
+</html>
