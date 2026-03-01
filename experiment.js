@@ -3,46 +3,44 @@
  * Two blocks (Male / Female) — block order randomized
  * 6 trials per block
  *
+ * REQUIRED COUNTERBALANCE LINKS:
+ *   ?cb=1  OR  ?cb=2  OR  ?cb=3
+ * If ?cb is missing/invalid: show error screen and DO NOT start.
+ *
  * PAIRED COUNTERBALANCING (pairs stay together):
  *   Trials 1–2: same attractiveness level
  *   Trials 3–4: same attractiveness level
  *   Trials 5–6: same attractiveness level
  *
- * Level cycle by participant GROUP (repeats every 3):
- *   G1: (1,1) (0,0) (2,2)
- *   G2: (0,0) (2,2) (1,1)
- *   G3: (2,2) (1,1) (0,0)
+ * Level order by CB group:
+ *   CB1: (1,1) (0,0) (2,2)
+ *   CB2: (0,0) (2,2) (1,1)
+ *   CB3: (2,2) (1,1) (0,0)
  * where 1=Attractive, 0=Average, 2=Unattractive
  *
- * NEW REQUESTS IMPLEMENTED:
- * (A) Labels are also counterbalanced across groups via a 3-cycle mapping (not stuck to level):
- *   Label Mapping Set 1 (G1): Attractive->Chess,      Average->Basketball, Unattractive->Neutral
- *   Label Mapping Set 2 (G2): Attractive->Neutral,    Average->Chess,      Unattractive->Basketball
- *   Label Mapping Set 3 (G3): Attractive->Basketball, Average->Neutral,    Unattractive->Chess
+ * Labels counterbalanced across CB groups via mapping sets:
+ *   CB1: Attractive->Chess,      Average->Basketball, Unattractive->Neutral
+ *   CB2: Attractive->Neutral,    Average->Chess,      Unattractive->Basketball
+ *   CB3: Attractive->Basketball, Average->Neutral,    Unattractive->Chess
  *
- * (B) Sentence order within each pair is counterbalanced across participants:
- *   Some participants see Sentence1 then Sentence2 in a pair,
- *   others see Sentence2 then Sentence1.
+ * Sentence order within each pair:
+ *   Random per participant session so not everyone sees sentence #1 first.
  *
- * (C) Hard enforcement per block:
+ * Hard enforcement (per block):
  *   - Exactly 2 Attractive, 2 Average, 2 Unattractive
  *   - Exactly 2 Chess, 2 Basketball, 2 Neutral
  *   - For each label type: sentence #1 used once, sentence #2 used once
  *
- * (D) CloudResearch ID is reliably saved:
+ * CloudResearch ID:
  *   - Save once at end (saveGate)
- *   - Then CR ID screen updates the SAME Firebase record immediately
- *
- * (E) STRICT COUNTERBALANCING LINKS (NEW):
- *   - Study requires URL parameter ?cb=1 OR ?cb=2 OR ?cb=3
- *   - If missing/invalid, it shows an error screen and refuses to start
+ *   - Then ID screen updates the SAME Firebase record immediately
  ***********************/
 
 /* ========= BASIC OPTIONS ========= */
 
 const IMAGE_DIR = 'all_images';
 const FACE_IDS = [1, 2, 3, 4, 5, 6];
-const HEIGHT_CODES = ['1', '2', '3'];
+const HEIGHT_CODES = ['1', '2', '3']; // 1=Tall,2=Average,3=Short
 
 // Filename attractiveness codes: ''=Attractive, '.2'=Average, '.3'=Unattractive
 const ATTR_CODES = ['', '.2', '.3'];
@@ -50,8 +48,8 @@ const EXT_CANDIDATES = ['.png', '.PNG', '.jpg', '.JPG', '.jpeg', '.JPEG'];
 
 /* ========= IDENTITY NAMES ========= */
 
-const MALE_NAMES_BY_FACE = { 1: "George", 2: "John", 3: "Terry", 4: "Michael", 5: "Jack", 6: "Wilson" };
-const FEMALE_NAMES_BY_FACE = { 1: "Emma", 2: "Olivia", 3: "Mary", 4: "Emily", 5: "Samantha", 6: "Jessica" };
+const MALE_NAMES_BY_FACE = { 1:"George", 2:"John", 3:"Terry", 4:"Michael", 5:"Jack", 6:"Wilson" };
+const FEMALE_NAMES_BY_FACE = { 1:"Emma", 2:"Olivia", 3:"Mary", 4:"Emily", 5:"Samantha", 6:"Jessica" };
 
 /* ========= LABEL SENTENCES (2 per category) ========= */
 
@@ -89,8 +87,6 @@ const femaleQuestionTexts = [
   "How likely are you to choose this person for your college Women's chess team?"
 ];
 
-const CLOUDRESEARCH_COMPLETION_URL = "";
-
 /* ========= UTILITIES ========= */
 
 function safeUUID() {
@@ -100,8 +96,8 @@ function safeUUID() {
 }
 
 function getParam(name) {
-  const m = new URLSearchParams(location.search).get(name);
-  return m ? decodeURIComponent(m) : null;
+  const v = new URLSearchParams(location.search).get(name);
+  return v ? decodeURIComponent(v) : null;
 }
 
 function choice(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
@@ -117,43 +113,6 @@ async function urlExists(url) {
   } catch(_) {
     return false;
   }
-}
-
-function hashStringToInt(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0);
-}
-
-/* ========= STRICT COUNTERBALANCE GROUP FROM URL ========= */
-
-function getCounterbalanceGroupStrictFromURL() {
-  const raw = getParam('cb');     // expects "1", "2", or "3"
-  const cb = parseInt(raw, 10);
-
-  if (![1, 2, 3].includes(cb)) {
-    document.body.innerHTML = `
-      <div style="max-width:900px;margin:40px auto;font-family:Arial, sans-serif;line-height:1.5;">
-        <h2 style="color:#b00;">Link error: counterbalance group missing</h2>
-        <p>This study must be opened using a special link that includes a counterbalance parameter:</p>
-        <ul>
-          <li><code>?cb=1</code></li>
-          <li><code>?cb=2</code></li>
-          <li><code>?cb=3</code></li>
-        </ul>
-        <p><strong>Please return to CloudResearch and click the study link again.</strong></p>
-        <p style="margin-top:18px;color:#555;">
-          (Tech note: missing/invalid <code>cb</code> URL parameter. Received: <code>${String(raw)}</code>)
-        </p>
-      </div>
-    `;
-    throw new Error(`Missing/invalid counterbalance group in URL (?cb=1/2/3). Got: ${raw}`);
-  }
-
-  return cb;
 }
 
 /* ========= META PARSER ========= */
@@ -211,7 +170,6 @@ function ensureFirebaseAuth() {
     });
   });
 }
-
 const db = firebase.database();
 
 /* ========= INIT JPSYCH ========= */
@@ -220,6 +178,31 @@ const jsPsych = initJsPsych({
   show_progress_bar: true,
   message_progress_bar: 'Progress',
 });
+
+/* ========= REQUIRED: CB GROUP FROM URL ========= */
+
+function getCBGroupOrStop() {
+  const cbRaw = getParam('cb');
+  const cb = parseInt(cbRaw, 10);
+
+  if (![1,2,3].includes(cb)) {
+    document.body.innerHTML = `
+      <div style="max-width:900px;margin:40px auto;font-family:Arial, sans-serif;">
+        <h2 style="color:#b00;">Missing / invalid counterbalance link</h2>
+        <p>This study must be opened with one of these URLs:</p>
+        <ul>
+          <li><code>?cb=1</code></li>
+          <li><code>?cb=2</code></li>
+          <li><code>?cb=3</code></li>
+        </ul>
+        <p>Example:</p>
+        <pre style="white-space:pre-wrap;background:#f7f7f7;border:1px solid #ddd;padding:12px;border-radius:8px;">${location.origin + location.pathname}?cb=1</pre>
+      </div>
+    `;
+    throw new Error("Missing/invalid cb parameter.");
+  }
+  return cb;
+}
 
 /* ========= PARTICIPANT IDS ========= */
 
@@ -245,14 +228,8 @@ const beforeUnloadHandler = (e) => { e.preventDefault(); e.returnValue = ''; };
 window.addEventListener('beforeunload', beforeUnloadHandler);
 
 /* ============================================================================
-   COUNTERBALANCING
+   COUNTERBALANCING (by cb=1/2/3)
    ============================================================================ */
-
-// sentence order flip (0/1) so not everyone sees sentence 1 first in the pair
-function getSentenceFlip(participant_id_str) {
-  const h = hashStringToInt(String(participant_id_str || ''));
-  return (h % 2); // 0 or 1
-}
 
 // Pair schedule by group (3 pairs; each pair repeated twice)
 const PAIR_LEVELS_BY_GROUP = {
@@ -268,16 +245,21 @@ function levelToAttrCode(levelNum){
   return '.3';                     // Unattractive
 }
 
-// label mapping sets by GROUP
+// Label mapping sets by CB group
 const LABEL_MAP_BY_GROUP = {
-  1: { 1: 'Chess',       0: 'Basketball', 2: 'Neutral' },
-  2: { 1: 'Neutral',     0: 'Chess',      2: 'Basketball' },
-  3: { 1: 'Basketball',  0: 'Neutral',    2: 'Chess' }
+  1: { 1:'Chess',      0:'Basketball', 2:'Neutral' },
+  2: { 1:'Neutral',    0:'Chess',      2:'Basketball' },
+  3: { 1:'Basketball', 0:'Neutral',    2:'Chess' }
 };
 
 function levelToLabelCategory(levelNum, group){
   const map = LABEL_MAP_BY_GROUP[group] || LABEL_MAP_BY_GROUP[1];
   return map[levelNum];
+}
+
+// Sentence order flip: random per session so not everyone sees sentence1 first
+function getSentenceFlipRandom() {
+  return Math.random() < 0.5 ? 0 : 1; // 0 or 1
 }
 
 /* ============================================================================
@@ -314,10 +296,10 @@ async function buildAvailability(sexTag) {
 
 async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) {
   const availability = await buildAvailability(sexTag);
-  const remainingFaces = jsPsych.randomization.shuffle([...FACE_IDS]); // random identities (no replacement)
+  const remainingFaces = jsPsych.randomization.shuffle([...FACE_IDS]); // identities randomized per participant
   const pairLevels = PAIR_LEVELS_BY_GROUP[group] || PAIR_LEVELS_BY_GROUP[1];
 
-  // sanity check templates
+  // Sanity check templates
   ["Chess","Basketball","Neutral"].forEach(cat => {
     const arr = LABEL_TEMPLATES[cat] || [];
     if (arr.length !== 2) throw new Error(`LABEL_TEMPLATES.${cat} must have exactly 2 sentences.`);
@@ -327,16 +309,16 @@ async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) 
   const specs = [];
 
   for (let pairIndex = 0; pairIndex < 3; pairIndex++) {
-    const levelNum = pairLevels[pairIndex];            // 1/0/2
-    const attrCode = levelToAttrCode(levelNum);        // ''/'.2'/'.3'
+    const levelNum = pairLevels[pairIndex];              // 1/0/2
+    const attrCode = levelToAttrCode(levelNum);          // ''/'.2'/'.3'
     const labelCategory = levelToLabelCategory(levelNum, group);
 
-    // pick two identities for this pair
+    // pick two identities for this pair (random, without replacement)
     const face1 = remainingFaces.pop();
     const face2 = remainingFaces.pop();
     const pairFaces = jsPsych.randomization.shuffle([face1, face2]); // random order within pair (still adjacent)
 
-    // sentence order within the pair is flipped for some participants
+    // sentence order within the pair flipped for some sessions
     const variantOrder = (sentenceFlip === 1) ? [2, 1] : [1, 2];
 
     for (let within = 0; within < 2; within++) {
@@ -354,7 +336,7 @@ async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) 
 
       const imgPath = choice(options);
 
-      const label_variant = variantOrder[within];  // 1 or 2
+      const label_variant = variantOrder[within]; // 1 or 2
       const template = LABEL_TEMPLATES[labelCategory][label_variant - 1];
       const labelText = template.replaceAll("{NAME}", name);
 
@@ -366,18 +348,19 @@ async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) 
 
         counterbalance_group: group,
         sentence_flip: sentenceFlip,
-
         counterbalance_level: levelNum,
+
         attract_code_expected: attrCode,
         label_category: labelCategory,
         label_variant: label_variant,
         image_label_text: labelText,
+
         image: imgPath
       });
     }
   }
 
-  // HARD ENFORCEMENT
+  // Hard enforcement: 2/2/2 levels, 2/2/2 labels, and per label type variants 1&2 each exactly once
   const levelCounts = { 0: 0, 1: 0, 2: 0 };
   const labelCounts = { Chess: 0, Basketball: 0, Neutral: 0 };
   const variantCounts = { Chess: {1:0, 2:0}, Basketball: {1:0, 2:0}, Neutral: {1:0, 2:0} };
@@ -402,56 +385,30 @@ async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) 
     );
   }
 
-  return specs; // DO NOT shuffle final 6; pairs must stay together
+  // IMPORTANT: do not shuffle final 6 trials; pairs must stay together
+  return specs;
 }
 
-/* ========= FULLSCREEN + INSTRUCTIONS ========= */
+/* ========= FULLSCREEN + SCREENS ========= */
 
 const fullscreen = {
   type: jsPsychFullscreen,
   fullscreen_mode: true,
   message: `
-    <div class="fs-center">
-      <div class="fs-box">
-        <p>The experiment will switch to full screen mode when you press the button below.</p>
-        <p><strong>Please make sure to remain in full-screen mode for the entirety of the study.</strong></p>
-        <p><strong>Please have your Connect/Cloud Research ID ready; you will need it to access the completion link at the end of the study.</strong></p>
-      </div>
+    <div class="fs-message">
+      <p>The experiment will switch to full screen mode when you press the button below.</p>
+      <p><strong>Please make sure to remain in full-screen mode for the entirety of the study.</strong></p>
+      <p><strong>Please have your Connect/Cloud Research ID ready; you will need it to access the completion link at the end of the study.</strong></p>
     </div>
   `,
   button_label: "Continue",
   on_load: () => {
-    const stage = document.querySelector('.jspsych-content');
-    if (stage) {
-      stage.style.display = 'flex';
-      stage.style.flexDirection = 'column';
-      stage.style.justifyContent = 'center';
-      stage.style.alignItems = 'center';
-      stage.style.minHeight = '100vh';
-    }
-    const style = document.createElement('style');
-    style.id = 'fs-center-style';
-    style.textContent = `
-      .fs-center { width: 100%; display:flex; justify-content:center; }
-      .fs-box { max-width: 900px; width:100%; text-align:center; padding: 0 24px; }
-      .jspsych-content-wrapper { width:100%; }
-      .jspsych-content { max-width: 1000px; }
-      #jspsych-fullscreen-btn { margin-top: 16px !important; }
-      .jspsych-content > div { margin-bottom: 0 !important; }
-    `;
-    document.head.appendChild(style);
+    const el = document.querySelector('.jspsych-content');
+    if (el) el.classList.add('fullscreen-mode');
   },
   on_finish: () => {
-    const stage = document.querySelector('.jspsych-content');
-    if (stage) {
-      stage.style.display = '';
-      stage.style.flexDirection = '';
-      stage.style.justifyContent = '';
-      stage.style.alignItems = '';
-      stage.style.minHeight = '';
-    }
-    const style = document.getElementById('fs-center-style');
-    if (style) style.remove();
+    const el = document.querySelector('.jspsych-content');
+    if (el) el.classList.remove('fullscreen-mode');
   }
 };
 
@@ -807,7 +764,7 @@ const requireCloudResearchId = {
       jsPsych.data.addProperties({ participantId_manual_fallback: cloudresearch_id_manual });
     }
 
-    // Update the SAME Firebase record immediately
+    // update the SAME Firebase record immediately
     updateFirebaseWithManualCRID().catch(e => console.warn("CRID update failed:", e));
   }
 };
@@ -881,7 +838,7 @@ function finalSave() {
     assignmentId,
     projectId,
     trials,
-    client_version: 'v7_labelmap_cycle_sentenceflip_strictcb',
+    client_version: 'cb_required_v1',
     createdAt: firebase.database.ServerValue.TIMESTAMP
   };
 
@@ -908,29 +865,25 @@ function updateFirebaseWithManualCRID() {
 
 (async function bootstrap() {
   try {
-    // STRICT: require ?cb=1/2/3
-    const group = getCounterbalanceGroupStrictFromURL();
+    const group = getCBGroupOrStop();       // <-- REQUIRED ?cb=
+    const sentenceFlip = getSentenceFlipRandom();
 
-    // sentence order flip still uses participant_id (fine)
-    const sentenceFlip = getSentenceFlip(participant_id);
+    jsPsych.data.addProperties({
+      counterbalance_group: group,
+      sentence_flip: sentenceFlip
+    });
 
-    jsPsych.data.addProperties({ counterbalance_group: group, sentence_flip: sentenceFlip });
-
-    // Build paired trials for each block (labels counterbalanced + sentence order flip)
     const maleSpecs   = await buildBlockTrialSpecsPaired('M.F', group, MALE_NAMES_BY_FACE, sentenceFlip);
     const femaleSpecs = await buildBlockTrialSpecsPaired('F.F', group, FEMALE_NAMES_BY_FACE, sentenceFlip);
 
-    // Preload only real images
     const preload = {
       type: jsPsychPreload,
       images: [...maleSpecs.map(s => s.image), ...femaleSpecs.map(s => s.image)]
     };
 
-    // Block intros
     const maleIntro   = makeBlockIntro('Male');
     const femaleIntro = makeBlockIntro('Female');
 
-    // Trials (pairs stay together)
     const maleTrials   = maleSpecs.map(spec => makeImageTrial('Male', spec));
     const femaleTrials = femaleSpecs.map(spec => makeImageTrial('Female', spec));
 
@@ -940,7 +893,6 @@ function updateFirebaseWithManualCRID() {
       { intro: femaleIntro, trials: femaleTrials }
     ]);
 
-    // Timeline
     const timeline = [];
     timeline.push(fullscreen);
     timeline.push(preload, welcome, instructions);
@@ -952,18 +904,7 @@ function updateFirebaseWithManualCRID() {
     jsPsych.run(timeline);
 
   } catch (err) {
+    // If cb missing, we already showed a page-level error; just stop here.
     console.error(err);
-    // If strict-cb threw, it already displayed the error screen.
-    // But we keep a generic fallback just in case.
-    if (!document.body.innerHTML || document.body.innerHTML.trim().length === 0) {
-      document.body.innerHTML = `
-        <div style="max-width:900px;margin:40px auto;font-family:Arial, sans-serif;">
-          <h2 style="color:#b00;">Experiment setup error</h2>
-          <pre style="white-space:pre-wrap;background:#f7f7f7;border:1px solid #ddd;padding:12px;border-radius:8px;">
-${String(err && err.message ? err.message : err)}
-          </pre>
-        </div>
-      `;
-    }
   }
 })();
