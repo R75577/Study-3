@@ -1,15 +1,19 @@
 /***********************
- * Perception Study (PNG/JPG images)
+ * Perception Study (PNG/JPG images) — AVERAGE HEIGHT ONLY
  * Two blocks (Male / Female) — block order randomized
- * 6 trials per block
- *
- * THIS VERSION: ONLY AVERAGE HEIGHT IMAGES
- *   - 18 Male images total (6 faces × 3 attractiveness levels at height=2)
- *   - 18 Female images total (6 faces × 3 attractiveness levels at height=2)
+ * 6 trials per block (3 adjacent pairs)
  *
  * REQUIRED COUNTERBALANCE LINKS:
  *   ?cb=1  OR  ?cb=2  OR  ?cb=3
  * If ?cb is missing/invalid: show error screen and DO NOT start.
+ *
+ * IMAGE RULES (THIS VERSION):
+ *   - ONLY Average height code = 2
+ *   - Filenames must be EXACTLY:
+ *       all_images/M.F.<face>_2.png     (Attractive)
+ *       all_images/M.F.<face>_2.2.png   (Average)
+ *       all_images/M.F.<face>_2.3.png   (Unattractive)
+ *     and the same for F.F
  *
  * PAIRED COUNTERBALANCING (pairs stay together):
  *   Trials 1–2: same attractiveness level
@@ -42,14 +46,22 @@
 
 /* ========= BASIC OPTIONS ========= */
 
+// IMPORTANT: folder name must match your repo EXACTLY
 const IMAGE_DIR = 'all_images';
+
+// Face identities (6 male + 6 female)
 const FACE_IDS = [1, 2, 3, 4, 5, 6];
 
-// IMPORTANT CHANGE: ONLY AVERAGE HEIGHT CODE "2"
-const HEIGHT_CODES = ['2']; // ONLY Average
+// THIS STUDY: Average height only
+const HEIGHT_CODE = '2';
 
-// Filename attractiveness codes: ''=Attractive, '.2'=Average, '.3'=Unattractive
+// Attractiveness codes in filename:
+// Attractive: ''  => ..._2.png
+// Average:    '.2'=> ..._2.2.png
+// Unattractive:'.3'=> ..._2.3.png
 const ATTR_CODES = ['', '.2', '.3'];
+
+// Extensions supported
 const EXT_CANDIDATES = ['.png', '.PNG', '.jpg', '.JPG', '.jpeg', '.JPEG'];
 
 /* ========= IDENTITY NAMES ========= */
@@ -109,6 +121,7 @@ function getParam(name) {
 function choice(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
 
 async function urlExists(url) {
+  // HEAD first (fast); fallback to GET (some hosts block HEAD)
   try {
     const r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
     if (r.ok) return true;
@@ -121,19 +134,21 @@ async function urlExists(url) {
   }
 }
 
-/* ========= META PARSER ========= */
+/* ========= META PARSER (matches your filename style) ========= */
 
 function parseMeta(imgPath) {
   const name = imgPath.split('/').pop();
-  const m = name.match(/^([FM]\.F)\.(\d+)_([123])(?:\.([23]))?\.(png|jpg|jpeg)$/i);
+
+  // Example: M.F.6_2.3.png   OR  F.F.2_2.png  OR  M.F.1_2.2.jpg
+  const m = name.match(/^([MF]\.F)\.(\d+)_([123])(?:\.(2|3))?\.(png|jpg|jpeg)$/i);
 
   const meta = { sex:null, face_id:null, height_code:null, height_label:null, attract_code:null, attract_label:null };
   if (!m) return meta;
 
-  const tag = m[1];
+  const tag  = m[1];           // M.F or F.F
   const face = parseInt(m[2], 10);
-  const h = m[3];
-  const a = m[4] || '';
+  const h    = m[3];           // 1/2/3 (but we use only 2)
+  const a    = m[4] || '';     // '2' or '3' or ''
 
   meta.sex = (tag === 'F.F') ? 'Female' : 'Male';
   meta.face_id = face;
@@ -246,9 +261,9 @@ const PAIR_LEVELS_BY_GROUP = {
 
 // Map level -> filename attractiveness code
 function levelToAttrCode(levelNum){
-  if (levelNum === 1) return '';   // Attractive -> M.F.X_2.png
-  if (levelNum === 0) return '.2'; // Average    -> M.F.X_2.2.png
-  return '.3';                     // Unattractive -> M.F.X_2.3.png
+  if (levelNum === 1) return '';   // Attractive -> ..._2.png
+  if (levelNum === 0) return '.2'; // Average    -> ..._2.2.png
+  return '.3';                     // Unattractive -> ..._2.3.png
 }
 
 // Label mapping sets by CB group
@@ -263,17 +278,19 @@ function levelToLabelCategory(levelNum, group){
   return map[levelNum];
 }
 
+// Sentence order flip: random per session
 function getSentenceFlipRandom() {
   return Math.random() < 0.5 ? 0 : 1;
 }
 
 /* ============================================================================
-   IMAGE LOOKUP (NO 404s) — NOW ONLY SEARCHES HEIGHT_CODE "2"
+   IMAGE LOOKUP (STRICT: ONLY _2 and your dot-codes)
    ============================================================================ */
 
-async function findExistingFile(sexTag, face_id, h, a) {
+async function findExistingFile(sexTag, face_id, attrCode) {
   for (const ext of EXT_CANDIDATES) {
-    const filename = `${sexTag}.${face_id}_${h}${a}${ext}`;
+    // STRICT expected format: M.F.6_2.3.png etc
+    const filename = `${sexTag}.${face_id}_${HEIGHT_CODE}${attrCode}${ext}`;
     const url = `${IMAGE_DIR}/${filename}`;
     if (await urlExists(url)) return url;
   }
@@ -285,11 +302,8 @@ async function buildAvailability(sexTag) {
   for (const face_id of FACE_IDS) {
     availability[face_id] = {};
     for (const a of ATTR_CODES) {
-      availability[face_id][a] = [];
-      for (const h of HEIGHT_CODES) { // <-- ONLY '2'
-        const found = await findExistingFile(sexTag, face_id, h, a);
-        if (found) availability[face_id][a].push(found);
-      }
+      const found = await findExistingFile(sexTag, face_id, a);
+      availability[face_id][a] = found ? [found] : [];
     }
   }
   return availability;
@@ -331,8 +345,8 @@ async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) 
       if (!options.length) {
         const readable = (attrCode === '') ? 'Attractive' : (attrCode === '.2') ? 'Average' : 'Unattractive';
         throw new Error(
-          `Missing images for ${sexTag} face_id=${face_id} at ${readable} (height must be 2 only). ` +
-          `Expected e.g.: ${sexTag}.${face_id}_2${attrCode}<ext> inside ${IMAGE_DIR}/`
+          `Missing image for ${sexTag} face_id=${face_id} at ${readable}. ` +
+          `Expected: ${IMAGE_DIR}/${sexTag}.${face_id}_${HEIGHT_CODE}${attrCode}<ext> (e.g., .png)`
         );
       }
 
@@ -362,6 +376,7 @@ async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) 
     }
   }
 
+  // Hard enforcement
   const levelCounts = { 0: 0, 1: 0, 2: 0 };
   const labelCounts = { Chess: 0, Basketball: 0, Neutral: 0 };
   const variantCounts = { Chess: {1:0, 2:0}, Basketball: {1:0, 2:0}, Neutral: {1:0, 2:0} };
@@ -386,6 +401,7 @@ async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) 
     );
   }
 
+  // DO NOT shuffle final 6 trials; pairs must stay together
   return specs;
 }
 
@@ -614,6 +630,7 @@ function makeImageTrial(blockLabel, spec) {
         document.body.dataset.interactTimes = JSON.stringify(times);
       }, { once: true });
 
+      /* ====== HARD 40% IMAGE / 60% FORM SCALE-FIT ====== */
       (function fitWithStrictSplitAndFormScale() {
         const stage   = document.querySelector('.jspsych-content');
         const preWrap = stage?.querySelector('.preamble-wrap');
@@ -836,7 +853,7 @@ function finalSave() {
     assignmentId,
     projectId,
     trials,
-    client_version: 'cb_required_avgHeightOnly_v1',
+    client_version: 'cb_required_avgHeightOnly_v2',
     createdAt: firebase.database.ServerValue.TIMESTAMP
   };
 
