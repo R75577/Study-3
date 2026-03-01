@@ -1,55 +1,77 @@
 /***********************
  * Perception Study (PNG/JPG images)
- * One image + two 1–7 sliders per trial
- * Two blocks (Male / Female) — block order randomized; trials randomized within blocks
- * Saves ONLY once at the very end (no streaming/partials)
- * Thank-You page has ONLY the CloudResearch link (no Finish button)
+ * Two blocks (Male / Female) — block order randomized
+ * 6 trials per block
  *
- * IMPLEMENTED:
- * - 6 identities per block, each shown once
- * - balanced attractiveness per block: 2 Attractive, 2 Average, 2 Unattractive
- * - mapping randomized per participant
- * - NO 404s: probes which image files exist and only uses those
- * - Mandatory CloudResearch ID entry after save, then completion link
+ * PAIRED COUNTERBALANCING (pairs stay together):
+ *   Trials 1–2: same attractiveness level
+ *   Trials 3–4: same attractiveness level
+ *   Trials 5–6: same attractiveness level
  *
- * NEW (Option 2 labels / domain primes):
- * - 3 label types: Chess / Basketball / Neutral
- * - balanced within each block: 2 Chess + 2 Basketball + 2 Neutral
- * - randomized assignment within each block
- * - label text shown ABOVE the sliders (so it is visible; not clipped)
- * - label_type and label_text saved in each trial
+ * Level cycle by participant GROUP (repeats every 3):
+ *   G1: (1,1) (0,0) (2,2)
+ *   G2: (0,0) (2,2) (1,1)
+ *   G3: (2,2) (1,1) (0,0)
+ * where 1=Attractive, 0=Average, 2=Unattractive
+ *
+ * NEW REQUESTS IMPLEMENTED:
+ * (A) Labels are also counterbalanced across groups via a 3-cycle mapping (not stuck to level):
+ *   Label Mapping Set 1 (G1): Attractive->Chess,      Average->Basketball, Unattractive->Neutral
+ *   Label Mapping Set 2 (G2): Attractive->Neutral,    Average->Chess,      Unattractive->Basketball
+ *   Label Mapping Set 3 (G3): Attractive->Basketball, Average->Neutral,    Unattractive->Chess
+ *
+ * (B) Sentence order within each pair is counterbalanced across participants:
+ *   Some participants see Sentence1 then Sentence2 in a pair,
+ *   others see Sentence2 then Sentence1.
+ *
+ * (C) Hard enforcement per block:
+ *   - Exactly 2 Attractive, 2 Average, 2 Unattractive
+ *   - Exactly 2 Chess, 2 Basketball, 2 Neutral
+ *   - For each label type: sentence #1 used once, sentence #2 used once
+ *
+ * (D) CloudResearch ID is reliably saved:
+ *   - Save once at end (saveGate)
+ *   - Then CR ID screen updates the SAME Firebase record immediately
+ *
+ * (E) STRICT COUNTERBALANCING LINKS (NEW):
+ *   - Study requires URL parameter ?cb=1 OR ?cb=2 OR ?cb=3
+ *   - If missing/invalid, it shows an error screen and refuses to start
  ***********************/
 
 /* ========= BASIC OPTIONS ========= */
 
-const IMAGE_DIR = 'all_images';      // folder where images live
-const FACE_IDS = [1, 2, 3, 4, 5, 6]; // the 6 identities per block
-
-// Height codes in filenames (1=Tall, 2=Average, 3=Short)
+const IMAGE_DIR = 'all_images';
+const FACE_IDS = [1, 2, 3, 4, 5, 6];
 const HEIGHT_CODES = ['1', '2', '3'];
 
-// Attractiveness codes in filenames:
-// ''   = Attractive
-// '.2' = Average
-// '.3' = Unattractive
+// Filename attractiveness codes: ''=Attractive, '.2'=Average, '.3'=Unattractive
 const ATTR_CODES = ['', '.2', '.3'];
-
-// Try multiple extensions so we don't 404 if your files are .PNG/.JPG/etc.
 const EXT_CANDIDATES = ['.png', '.PNG', '.jpg', '.JPG', '.jpeg', '.JPEG'];
 
-/* ========= LABELS (Option 2) =========
-   Edit these sentences any time you want.
-*/
-const LABEL_TEXTS = {
-  Chess: "Chess label.",
-  Basketball: "Basketball label.",
-  Neutral: "Neutral label."
+/* ========= IDENTITY NAMES ========= */
+
+const MALE_NAMES_BY_FACE = { 1: "George", 2: "John", 3: "Terry", 4: "Michael", 5: "Jack", 6: "Wilson" };
+const FEMALE_NAMES_BY_FACE = { 1: "Emma", 2: "Olivia", 3: "Mary", 4: "Emily", 5: "Samantha", 6: "Jessica" };
+
+/* ========= LABEL SENTENCES (2 per category) ========= */
+
+const LABEL_TEMPLATES = {
+  Chess: [
+    "{NAME} is an introvert who enjoys logic games and crossword puzzles.",
+    "{NAME} competed in the National Mathematical Olympiad in high school and won 5th place."
+  ],
+  Basketball: [
+    "{NAME} volunteers as a part-time youth volleyball coach.",
+    "{NAME} was on the football team in high school."
+  ],
+  Neutral: [
+    "{NAME} commutes to the college campus.",
+    "{NAME} works part time at a retail store."
+  ]
 };
 
-// Balanced pool for 6 trials per block (2/2/2)
-const LABEL_POOL_6 = ["Chess", "Chess", "Basketball", "Basketball", "Neutral", "Neutral"];
+/* ========= SLIDER TICKS ========= */
 
-// Slider tick labels (1..7 with endpoint text)
 const tickRowHTML = `
   <div class="slider-ticks">
     <span>1<br><small>Not at all</small></span>
@@ -57,7 +79,6 @@ const tickRowHTML = `
     <span>7<br><small>Very</small></span>
   </div>`;
 
-// Questions (block-specific)
 const maleQuestionTexts = [
   "How likely are you to choose this person for your college Men's basketball team?",
   "How likely are you to choose this person for your college Men's chess team?"
@@ -68,7 +89,6 @@ const femaleQuestionTexts = [
   "How likely are you to choose this person for your college Women's chess team?"
 ];
 
-// Optional: paste your CloudResearch completion URL (unused in this flow)
 const CLOUDRESEARCH_COMPLETION_URL = "";
 
 /* ========= UTILITIES ========= */
@@ -86,7 +106,6 @@ function getParam(name) {
 
 function choice(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
 
-// Prefer HEAD; if server blocks HEAD, fall back to GET.
 async function urlExists(url) {
   try {
     const r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
@@ -100,11 +119,47 @@ async function urlExists(url) {
   }
 }
 
-/* ========= META PARSER (supports png/jpg/jpeg) ========= */
+function hashStringToInt(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0);
+}
+
+/* ========= STRICT COUNTERBALANCE GROUP FROM URL ========= */
+
+function getCounterbalanceGroupStrictFromURL() {
+  const raw = getParam('cb');     // expects "1", "2", or "3"
+  const cb = parseInt(raw, 10);
+
+  if (![1, 2, 3].includes(cb)) {
+    document.body.innerHTML = `
+      <div style="max-width:900px;margin:40px auto;font-family:Arial, sans-serif;line-height:1.5;">
+        <h2 style="color:#b00;">Link error: counterbalance group missing</h2>
+        <p>This study must be opened using a special link that includes a counterbalance parameter:</p>
+        <ul>
+          <li><code>?cb=1</code></li>
+          <li><code>?cb=2</code></li>
+          <li><code>?cb=3</code></li>
+        </ul>
+        <p><strong>Please return to CloudResearch and click the study link again.</strong></p>
+        <p style="margin-top:18px;color:#555;">
+          (Tech note: missing/invalid <code>cb</code> URL parameter. Received: <code>${String(raw)}</code>)
+        </p>
+      </div>
+    `;
+    throw new Error(`Missing/invalid counterbalance group in URL (?cb=1/2/3). Got: ${raw}`);
+  }
+
+  return cb;
+}
+
+/* ========= META PARSER ========= */
 
 function parseMeta(imgPath) {
   const name = imgPath.split('/').pop();
-  // Example: M.F.3_1.2.png OR F.F.5_3.jpg
   const m = name.match(/^([FM]\.F)\.(\d+)_([123])(?:\.([23]))?\.(png|jpg|jpeg)$/i);
 
   const meta = { sex:null, face_id:null, height_code:null, height_label:null, attract_code:null, attract_label:null };
@@ -113,7 +168,7 @@ function parseMeta(imgPath) {
   const tag = m[1];
   const face = parseInt(m[2], 10);
   const h = m[3];
-  const a = m[4] || ''; // '' means Attractive
+  const a = m[4] || '';
 
   meta.sex = (tag === 'F.F') ? 'Female' : 'Male';
   meta.face_id = face;
@@ -170,7 +225,8 @@ const jsPsych = initJsPsych({
 
 const participant_id =
   getParam('pid') || getParam('workerId') || getParam('PROLIFIC_PID') || safeUUID();
-const participantId = getParam('participantId') || '';  // CR Connect
+
+const participantId = getParam('participantId') || '';
 const assignmentId  = getParam('assignmentId')  || '';
 const projectId     = getParam('projectId')     || '';
 
@@ -189,7 +245,43 @@ const beforeUnloadHandler = (e) => { e.preventDefault(); e.returnValue = ''; };
 window.addEventListener('beforeunload', beforeUnloadHandler);
 
 /* ============================================================================
-   STIMULUS BUILDER (NO 404s): probe what exists, then sample balanced 2/2/2
+   COUNTERBALANCING
+   ============================================================================ */
+
+// sentence order flip (0/1) so not everyone sees sentence 1 first in the pair
+function getSentenceFlip(participant_id_str) {
+  const h = hashStringToInt(String(participant_id_str || ''));
+  return (h % 2); // 0 or 1
+}
+
+// Pair schedule by group (3 pairs; each pair repeated twice)
+const PAIR_LEVELS_BY_GROUP = {
+  1: [1, 0, 2], // (1,1) then (0,0) then (2,2)
+  2: [0, 2, 1], // (0,0) then (2,2) then (1,1)
+  3: [2, 1, 0]  // (2,2) then (1,1) then (0,0)
+};
+
+// Map level -> filename attractiveness code
+function levelToAttrCode(levelNum){
+  if (levelNum === 1) return '';   // Attractive
+  if (levelNum === 0) return '.2'; // Average
+  return '.3';                     // Unattractive
+}
+
+// label mapping sets by GROUP
+const LABEL_MAP_BY_GROUP = {
+  1: { 1: 'Chess',       0: 'Basketball', 2: 'Neutral' },
+  2: { 1: 'Neutral',     0: 'Chess',      2: 'Basketball' },
+  3: { 1: 'Basketball',  0: 'Neutral',    2: 'Chess' }
+};
+
+function levelToLabelCategory(levelNum, group){
+  const map = LABEL_MAP_BY_GROUP[group] || LABEL_MAP_BY_GROUP[1];
+  return map[levelNum];
+}
+
+/* ============================================================================
+   IMAGE LOOKUP (NO 404s)
    ============================================================================ */
 
 async function findExistingFile(sexTag, face_id, h, a) {
@@ -202,7 +294,6 @@ async function findExistingFile(sexTag, face_id, h, a) {
 }
 
 async function buildAvailability(sexTag) {
-  // availability[face_id][attrCode] = [list of existing file URLs]
   const availability = {};
   for (const face_id of FACE_IDS) {
     availability[face_id] = {};
@@ -217,96 +308,159 @@ async function buildAvailability(sexTag) {
   return availability;
 }
 
-function shuffle(arr) {
-  return jsPsych.randomization.shuffle([...arr]);
-}
+/* ============================================================================
+   BUILD TRIAL SPECS (STRICT PAIRS + HARD ENFORCEMENT)
+   ============================================================================ */
 
-async function selectBalancedBlockPaths(sexTag) {
+async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) {
   const availability = await buildAvailability(sexTag);
+  const remainingFaces = jsPsych.randomization.shuffle([...FACE_IDS]); // random identities (no replacement)
+  const pairLevels = PAIR_LEVELS_BY_GROUP[group] || PAIR_LEVELS_BY_GROUP[1];
 
-  const facesForAttr = {};
-  for (const a of ATTR_CODES) {
-    facesForAttr[a] = FACE_IDS.filter(face_id => (availability[face_id]?.[a] || []).length > 0);
-  }
+  // sanity check templates
+  ["Chess","Basketball","Neutral"].forEach(cat => {
+    const arr = LABEL_TEMPLATES[cat] || [];
+    if (arr.length !== 2) throw new Error(`LABEL_TEMPLATES.${cat} must have exactly 2 sentences.`);
+    if (arr[0].trim() === arr[1].trim()) throw new Error(`LABEL_TEMPLATES.${cat} must have 2 DIFFERENT sentences.`);
+  });
 
-  // Need at least 2 faces per attr to satisfy 2/2/2
-  for (const a of ATTR_CODES) {
-    if (facesForAttr[a].length < 2) {
-      const readable = (a === '') ? 'Attractive' : (a === '.2') ? 'Average' : 'Unattractive';
-      throw new Error(
-        `Not enough existing images for ${sexTag} at ${readable}. ` +
-        `Need >=2 identities but found ${facesForAttr[a].length}. ` +
-        `Check filenames in ${IMAGE_DIR}/`
-      );
-    }
-  }
+  const specs = [];
 
-  // Randomized search for non-overlapping face assignment
-  const MAX_TRIES = 500;
-  for (let t = 0; t < MAX_TRIES; t++) {
-    const used = new Set();
-    const pick = {};
+  for (let pairIndex = 0; pairIndex < 3; pairIndex++) {
+    const levelNum = pairLevels[pairIndex];            // 1/0/2
+    const attrCode = levelToAttrCode(levelNum);        // ''/'.2'/'.3'
+    const labelCategory = levelToLabelCategory(levelNum, group);
 
-    const attrsOrder = shuffle(ATTR_CODES);
-    let ok = true;
+    // pick two identities for this pair
+    const face1 = remainingFaces.pop();
+    const face2 = remainingFaces.pop();
+    const pairFaces = jsPsych.randomization.shuffle([face1, face2]); // random order within pair (still adjacent)
 
-    for (const a of attrsOrder) {
-      const candidates = shuffle(facesForAttr[a]).filter(f => !used.has(f));
-      if (candidates.length < 2) { ok = false; break; }
-      pick[a] = candidates.slice(0, 2);
-      pick[a].forEach(f => used.add(f));
-    }
+    // sentence order within the pair is flipped for some participants
+    const variantOrder = (sentenceFlip === 1) ? [2, 1] : [1, 2];
 
-    if (!ok) continue;
+    for (let within = 0; within < 2; within++) {
+      const face_id = pairFaces[within];
+      const name = nameMap[face_id] || "George";
 
-    const paths = [];
-    for (const a of ATTR_CODES) {
-      for (const face_id of pick[a]) {
-        const files = availability[face_id][a];
-        paths.push(choice(files)); // random height/extension among existing
+      const options = availability?.[face_id]?.[attrCode] || [];
+      if (!options.length) {
+        const readable = (attrCode === '') ? 'Attractive' : (attrCode === '.2') ? 'Average' : 'Unattractive';
+        throw new Error(
+          `Missing images for ${sexTag} face_id=${face_id} at ${readable}. ` +
+          `Expected: ${sexTag}.${face_id}_<height>${attrCode}<ext> in ${IMAGE_DIR}/`
+        );
       }
-    }
 
-    return shuffle(paths);
+      const imgPath = choice(options);
+
+      const label_variant = variantOrder[within];  // 1 or 2
+      const template = LABEL_TEMPLATES[labelCategory][label_variant - 1];
+      const labelText = template.replaceAll("{NAME}", name);
+
+      specs.push({
+        pair_index: pairIndex + 1,
+        within_pair_index: within + 1,
+        face_id,
+        identity_name: name,
+
+        counterbalance_group: group,
+        sentence_flip: sentenceFlip,
+
+        counterbalance_level: levelNum,
+        attract_code_expected: attrCode,
+        label_category: labelCategory,
+        label_variant: label_variant,
+        image_label_text: labelText,
+        image: imgPath
+      });
+    }
   }
 
-  throw new Error(
-    `Could not find a non-overlapping 2/2/2 assignment for ${sexTag}. ` +
-    `Some identities may be missing certain attractiveness levels.`
-  );
+  // HARD ENFORCEMENT
+  const levelCounts = { 0: 0, 1: 0, 2: 0 };
+  const labelCounts = { Chess: 0, Basketball: 0, Neutral: 0 };
+  const variantCounts = { Chess: {1:0, 2:0}, Basketball: {1:0, 2:0}, Neutral: {1:0, 2:0} };
+
+  for (const s of specs) {
+    levelCounts[s.counterbalance_level] += 1;
+    labelCounts[s.label_category] += 1;
+    variantCounts[s.label_category][s.label_variant] += 1;
+  }
+
+  const okLevels = (levelCounts[0] === 2 && levelCounts[1] === 2 && levelCounts[2] === 2);
+  const okLabels = (labelCounts.Chess === 2 && labelCounts.Basketball === 2 && labelCounts.Neutral === 2);
+  const okVariants =
+    (variantCounts.Chess[1] === 1 && variantCounts.Chess[2] === 1) &&
+    (variantCounts.Basketball[1] === 1 && variantCounts.Basketball[2] === 1) &&
+    (variantCounts.Neutral[1] === 1 && variantCounts.Neutral[2] === 1);
+
+  if (!okLevels || !okLabels || !okVariants) {
+    throw new Error(
+      `Counterbalance enforcement failed for ${sexTag}. ` +
+      `Levels: ${JSON.stringify(levelCounts)}; Labels: ${JSON.stringify(labelCounts)}; Variants: ${JSON.stringify(variantCounts)}`
+    );
+  }
+
+  return specs; // DO NOT shuffle final 6; pairs must stay together
 }
 
-/* ========= FULLSCREEN SCREEN ========= */
+/* ========= FULLSCREEN + INSTRUCTIONS ========= */
 
 const fullscreen = {
   type: jsPsychFullscreen,
   fullscreen_mode: true,
   message: `
-    <div class="fs-message">
-      <p>The experiment will switch to full screen mode when you press the button below.</p>
-      <p><strong>Please make sure to remain in full-screen mode for the entirety of the study.</strong></p>
-      <p><strong>Please have your Connect/Cloud Research ID ready; you will need it to access the completion link at the end of the study.</strong></p>
+    <div class="fs-center">
+      <div class="fs-box">
+        <p>The experiment will switch to full screen mode when you press the button below.</p>
+        <p><strong>Please make sure to remain in full-screen mode for the entirety of the study.</strong></p>
+        <p><strong>Please have your Connect/Cloud Research ID ready; you will need it to access the completion link at the end of the study.</strong></p>
+      </div>
     </div>
   `,
   button_label: "Continue",
   on_load: () => {
-    const el = document.querySelector('.jspsych-content');
-    if (el) el.classList.add('fullscreen-mode');
+    const stage = document.querySelector('.jspsych-content');
+    if (stage) {
+      stage.style.display = 'flex';
+      stage.style.flexDirection = 'column';
+      stage.style.justifyContent = 'center';
+      stage.style.alignItems = 'center';
+      stage.style.minHeight = '100vh';
+    }
+    const style = document.createElement('style');
+    style.id = 'fs-center-style';
+    style.textContent = `
+      .fs-center { width: 100%; display:flex; justify-content:center; }
+      .fs-box { max-width: 900px; width:100%; text-align:center; padding: 0 24px; }
+      .jspsych-content-wrapper { width:100%; }
+      .jspsych-content { max-width: 1000px; }
+      #jspsych-fullscreen-btn { margin-top: 16px !important; }
+      .jspsych-content > div { margin-bottom: 0 !important; }
+    `;
+    document.head.appendChild(style);
   },
   on_finish: () => {
-    const el = document.querySelector('.jspsych-content');
-    if (el) el.classList.remove('fullscreen-mode');
+    const stage = document.querySelector('.jspsych-content');
+    if (stage) {
+      stage.style.display = '';
+      stage.style.flexDirection = '';
+      stage.style.justifyContent = '';
+      stage.style.alignItems = '';
+      stage.style.minHeight = '';
+    }
+    const style = document.getElementById('fs-center-style');
+    if (style) style.remove();
   }
 };
-
-/* ========= SCREENS ========= */
 
 const welcome = {
   type: jsPsychInstructions,
   pages: [
     `<div class="center">
        <h2>Welcome</h2>
-       <p>Welcome to the experiment. This experiment will take approximately 10 minutes to complete.</p>
+       <p>Welcome to the experiment. This experiment will take approximately 15 minutes to complete.</p>
        <p>Please make sure you are in a quiet space and have a strong Wi-Fi connection while doing this experiment.</p>
        <p>If you wish to stop participating in this study at any point, simply press the "Esc" button on your keyboard and close the window; your data will not be recorded.</p>
      </div>`
@@ -323,9 +477,8 @@ const instructions = {
     `<div class="center">
        <h2>Instructions</h2>
        <p><strong>In this experiment, we will ask you to put yourself in the position of a college basketball team captain and college chess team captain tasked with selecting new team members. There are male and female teams.</strong></p>
-       <p>On each screen, you will see one image and two questions.</p> 
-       <p>'How likely are you to choose this person for your college basketball team?' and 'How likely are you to choose this person for your college chess team?'.</p> 
-       </p><strong>Please answer the questions based on your perception of the presented image.</strong></p>
+       <p>On each screen, you will see one image and two questions.</p>
+       <p><strong>Please answer the questions based on your perception of the presented image.</strong></p>
        <p>Use the 1–7 scale for each question. <strong>The scale is pre-set to 4 by default. However, you must still click or tap on your chosen response — including 4 — to record your answer</strong>.</p>
        <p>Both answers are required.</p>
      </div>`
@@ -338,7 +491,9 @@ const instructions = {
 
 function blockIntroHTML(label) {
   const isMale = (label === 'Male');
-  const heading = isMale ? 'Male candidates for the male basketball and male chess teams' : 'Female candidates for the female basketball and female chess teams';
+  const heading = isMale
+    ? 'Male candidates for the male basketball and male chess teams'
+    : 'Female candidates for the female basketball and female chess teams';
   const line = isMale
     ? 'Please view and answer the questions about the following male candidates for the male basketball and male chess teams'
     : 'Please view and answer the questions about the following female candidates for the female basketball and female chess teams';
@@ -348,6 +503,7 @@ function blockIntroHTML(label) {
             <p>Click Continue to begin.</p>
           </div>`;
 }
+
 function makeBlockIntro(label){
   return {
     type: jsPsychInstructions,
@@ -359,7 +515,7 @@ function makeBlockIntro(label){
   };
 }
 
-/* ========= SLIDER TRIAL (one screen with 2 sliders, both required) ========= */
+/* ========= SLIDER TRIAL ========= */
 
 function sliderHTML(name, prompt) {
   return `
@@ -372,21 +528,16 @@ function sliderHTML(name, prompt) {
     </div>`;
 }
 
-/* ========= TRIAL BUILDER (UPDATED FOR Option 2 labels) ========= */
-
-function makeImageTrial(blockLabel, imgPath, label_type) {
+function makeImageTrial(blockLabel, spec) {
   const isMale = (blockLabel === 'Male');
   const qTexts = isMale ? maleQuestionTexts : femaleQuestionTexts;
   const questionNames = ['Q1', 'Q2'];
 
-  const label_text = LABEL_TEXTS[label_type] || "";
-
-  // Put LABEL ABOVE the questions (inside the form area)
   const htmlBlock = `
-    <div class="image-label"
-         style="text-align:center; margin: 0 auto 14px; max-width: 900px;
-                font-size:18px; line-height:1.35;">
-      ${label_text}
+    <div class="stimulus-label"
+         style="max-width:900px; margin: 0 auto 12px; padding: 0 16px;
+                text-align:center; font-size:18px; line-height:1.35; color:#111;">
+      ${spec.image_label_text}
     </div>
 
     <div class="q-block">
@@ -394,37 +545,41 @@ function makeImageTrial(blockLabel, imgPath, label_type) {
       ${sliderHTML(questionNames[1], qTexts[1])}
     </div>`;
 
-  // accumulators for "active manipulation" time (ms)
   const interact = {};
   const activeSince = {};
-  questionNames.forEach(q => {
-    interact[q] = 0;
-    activeSince[q] = null;
-  });
+  questionNames.forEach(q => { interact[q] = 0; activeSince[q] = null; });
 
   return {
     type: jsPsychSurveyHtmlForm,
-
-    // Keep ONLY the image inside preamble-wrap (40% area)
     preamble: `
       <div class="preamble-wrap" style="display:flex; align-items:center; justify-content:center;">
-        <img class="stimulus-image" src="${imgPath}" alt="stimulus" style="display:block;">
+        <img class="stimulus-image" src="${spec.image}" alt="stimulus" style="display:block;">
       </div>
     `,
-
-    // Label + sliders live in the form (60% area)
     html: htmlBlock,
-
     button_label: 'Continue',
+
     data: {
       block: blockLabel,
-      image: imgPath,
+      image: spec.image,
 
-      // NEW: store label info
-      label_type: label_type,   // Chess / Basketball / Neutral
-      label_text: label_text,
+      pair_index: spec.pair_index,
+      within_pair_index: spec.within_pair_index,
 
-      ...parseMeta(imgPath)
+      face_id: spec.face_id,
+      identity_name: spec.identity_name,
+
+      counterbalance_group: spec.counterbalance_group,
+      sentence_flip: spec.sentence_flip,
+      counterbalance_level: spec.counterbalance_level,
+
+      label_category: spec.label_category,
+      label_variant: spec.label_variant,
+      image_label_text: spec.image_label_text,
+
+      attract_code_expected: spec.attract_code_expected,
+
+      ...parseMeta(spec.image)
     },
 
     on_load: () => {
@@ -433,9 +588,7 @@ function makeImageTrial(blockLabel, imgPath, label_type) {
         document.querySelector('form button[type="submit"]');
       if (!btn) return;
 
-      // make sure instruction centering is off for rating trials
       exitInstructionsMode();
-
       btn.disabled = true;
 
       const msg = document.createElement('div');
@@ -447,10 +600,7 @@ function makeImageTrial(blockLabel, imgPath, label_type) {
       btn.parentElement.insertBefore(msg, btn);
 
       const sliders = Array.from(document.querySelectorAll('input[type="range"]'));
-      sliders.forEach(s => {
-        s.dataset.touched = '0';
-        s.classList.remove('touched');
-      });
+      sliders.forEach(s => { s.dataset.touched = '0'; s.classList.remove('touched'); });
 
       function checkAllTouched() {
         const ok = sliders.every(s => s.dataset.touched === '1');
@@ -458,12 +608,10 @@ function makeImageTrial(blockLabel, imgPath, label_type) {
         msg.style.display = ok ? 'none' : 'block';
       }
 
-      // ==== Active manipulation timers ====
       function startActive(name){ stopAll(); if (activeSince[name] == null) activeSince[name] = performance.now(); }
       function stopActive(name){ if (activeSince[name] != null){ interact[name] += performance.now() - activeSince[name]; activeSince[name] = null; } }
       function stopAll(){ questionNames.forEach(stopActive); }
 
-      // === Mark slider as used + add .touched class ===
       sliders.forEach(s => {
         const markUsed = () => {
           if (s.dataset.touched === '1') return;
@@ -481,7 +629,6 @@ function makeImageTrial(blockLabel, imgPath, label_type) {
         s.addEventListener('keydown',     markUsed, { once: true });
       });
 
-      // ==== keep your active-time tracking ====
       sliders.forEach(s => {
         const name = s.name;
         const onStart = () => { startActive(name); };
@@ -510,7 +657,7 @@ function makeImageTrial(blockLabel, imgPath, label_type) {
         document.body.dataset.interactTimes = JSON.stringify(times);
       }, { once: true });
 
-      /* ====== HARD 40% IMAGE / 60% SCALES + AUTO SCALE-FIT FOR FORM ====== */
+      /* ====== HARD 40% IMAGE / 60% FORM SCALE-FIT ====== */
       (function fitWithStrictSplitAndFormScale() {
         const stage   = document.querySelector('.jspsych-content');
         const preWrap = stage?.querySelector('.preamble-wrap');
@@ -533,7 +680,6 @@ function makeImageTrial(blockLabel, imgPath, label_type) {
           const cs   = getComputedStyle(stage);
           const padT = parseFloat(cs.paddingTop) || 0;
           const padB = parseFloat(cs.paddingBottom) || 0;
-
           const H = window.innerHeight - padT - padB;
 
           const imgH = Math.floor(H * 0.40);
@@ -565,7 +711,6 @@ function makeImageTrial(blockLabel, imgPath, label_type) {
         window.addEventListener('resize', handler);
         preWrap.__resizeHandler = handler;
       })();
-      /* ====== END STRICT SPLIT + FORM SCALE ====== */
     },
 
     on_finish: (data) => {
@@ -598,10 +743,7 @@ const saveGate = {
   ],
   on_load: () => {
     finalSave()
-      .then(() => {
-        window.__saved__ = true;
-        setTimeout(() => jsPsych.finishTrial(), 200);
-      })
+      .then(() => setTimeout(() => jsPsych.finishTrial(), 200))
       .catch((e) => {
         console.error('Save failed:', e);
         setTimeout(() => jsPsych.finishTrial(), 200);
@@ -641,9 +783,7 @@ const requireCloudResearchId = {
 
     if (!btn || !input) return;
 
-    if (participantId && participantId.trim().length > 0) {
-      input.value = participantId.trim();
-    }
+    if (participantId && participantId.trim().length > 0) input.value = participantId.trim();
 
     const validate = () => {
       const v = (input.value || '').trim();
@@ -654,21 +794,21 @@ const requireCloudResearchId = {
 
     btn.disabled = true;
     validate();
-
     input.addEventListener('input', validate);
     input.addEventListener('change', validate);
     input.focus();
   },
   on_finish: (data) => {
     exitInstructionsMode();
-    const v = (data.response?.cloudresearch_id_manual || '').trim();
-    cloudresearch_id_manual = v;
+    cloudresearch_id_manual = (data.response?.cloudresearch_id_manual || '').trim();
+    jsPsych.data.addProperties({ cloudresearch_id_manual });
 
-    jsPsych.data.addProperties({ cloudresearch_id_manual: v });
-
-    if (!participantId && v) {
-      jsPsych.data.addProperties({ participantId_manual_fallback: v });
+    if (!participantId && cloudresearch_id_manual) {
+      jsPsych.data.addProperties({ participantId_manual_fallback: cloudresearch_id_manual });
     }
+
+    // Update the SAME Firebase record immediately
+    updateFirebaseWithManualCRID().catch(e => console.warn("CRID update failed:", e));
   }
 };
 
@@ -679,12 +819,8 @@ const thankYou = {
     `<div class="center" style="max-width:800px;margin:0 auto;">
        <h2>Thank you!</h2>
        <p>Your responses have been recorded.</p>
-
        <hr style="margin:18px 0; border:0; border-top:2px solid #d5d5d5;">
-
-       <p><strong>Thank you for participating! Your responses have been recorded.
-       <br>Please click on the link below to be redirected to CloudResearch and then close this window.</strong></p>
-
+       <p><strong>Please click the link below to be redirected to CloudResearch and then close this window.</strong></p>
        <p style="margin-top:12px;">
          <a href="https://connect.cloudresearch.com/participant/project/FF4E356E38/complete"
             target="_blank" rel="noopener noreferrer"
@@ -697,6 +833,7 @@ const thankYou = {
   on_load: () => {
     try { window.removeEventListener('beforeunload', beforeUnloadHandler); } catch(_) {}
     enterInstructionsMode();
+    updateFirebaseWithManualCRID().catch(e => console.warn("CRID update failed on thank-you:", e));
   },
   on_finish: exitInstructionsMode
 };
@@ -711,18 +848,29 @@ function finalSave() {
       block: row.block,
       image: row.image,
 
-      // NEW: label info saved
-      label_type: row.label_type,
-      label_text: row.label_text,
+      pair_index: row.pair_index,
+      within_pair_index: row.within_pair_index,
+
+      face_id: row.face_id,
+      identity_name: row.identity_name,
+
+      counterbalance_group: row.counterbalance_group,
+      sentence_flip: row.sentence_flip,
+      counterbalance_level: row.counterbalance_level,
+
+      label_category: row.label_category,
+      label_variant: row.label_variant,
+      image_label_text: row.image_label_text,
 
       sex: row.sex,
-      face_id: row.face_id,
       height_label: row.height_label,
       attract_label: row.attract_label,
+      attract_code_expected: row.attract_code_expected,
 
       rt: row.rt,
       Q1: Number(row.response?.Q1),
       Q2: Number(row.response?.Q2),
+
       Q1_interact_ms: row.Q1_interact_ms ?? null,
       Q2_interact_ms: row.Q2_interact_ms ?? null
     }));
@@ -733,12 +881,12 @@ function finalSave() {
     assignmentId,
     projectId,
     trials,
-    client_version: 'v3',
+    client_version: 'v7_labelmap_cycle_sentenceflip_strictcb',
     createdAt: firebase.database.ServerValue.TIMESTAMP
   };
 
   return db.ref('responses').push(payload).then((ref) => {
-    window.__fb_response_key__ = ref.key;
+    window.__fb_response_key__ = ref.key; // required for later update
     return ref;
   });
 }
@@ -756,42 +904,37 @@ function updateFirebaseWithManualCRID() {
   });
 }
 
-const _thankYouOnLoad = thankYou.on_load;
-thankYou.on_load = () => {
-  updateFirebaseWithManualCRID()
-    .catch((e) => console.warn('Could not update manual CR ID:', e))
-    .finally(() => {
-      if (typeof _thankYouOnLoad === 'function') _thankYouOnLoad();
-    });
-};
-
-/* ========= BOOTSTRAP (build stimuli -> preload -> build timeline -> run) ========= */
+/* ========= BOOTSTRAP ========= */
 
 (async function bootstrap() {
   try {
-    // Build block paths WITHOUT 404s (only from existing images)
-    const malePaths   = await selectBalancedBlockPaths('M.F');
-    const femalePaths = await selectBalancedBlockPaths('F.F');
+    // STRICT: require ?cb=1/2/3
+    const group = getCounterbalanceGroupStrictFromURL();
 
-    // Preload AFTER we know the real files
+    // sentence order flip still uses participant_id (fine)
+    const sentenceFlip = getSentenceFlip(participant_id);
+
+    jsPsych.data.addProperties({ counterbalance_group: group, sentence_flip: sentenceFlip });
+
+    // Build paired trials for each block (labels counterbalanced + sentence order flip)
+    const maleSpecs   = await buildBlockTrialSpecsPaired('M.F', group, MALE_NAMES_BY_FACE, sentenceFlip);
+    const femaleSpecs = await buildBlockTrialSpecsPaired('F.F', group, FEMALE_NAMES_BY_FACE, sentenceFlip);
+
+    // Preload only real images
     const preload = {
       type: jsPsychPreload,
-      images: [...malePaths, ...femalePaths]
+      images: [...maleSpecs.map(s => s.image), ...femaleSpecs.map(s => s.image)]
     };
 
     // Block intros
     const maleIntro   = makeBlockIntro('Male');
     const femaleIntro = makeBlockIntro('Female');
 
-    // NEW: balanced + randomized labels within each block
-    const maleLabels   = jsPsych.randomization.shuffle([...LABEL_POOL_6]);
-    const femaleLabels = jsPsych.randomization.shuffle([...LABEL_POOL_6]);
+    // Trials (pairs stay together)
+    const maleTrials   = maleSpecs.map(spec => makeImageTrial('Male', spec));
+    const femaleTrials = femaleSpecs.map(spec => makeImageTrial('Female', spec));
 
-    // Trials (random order within block) + labels assigned per trial
-    const maleTrials   = malePaths.map((p, i) => makeImageTrial('Male', p, maleLabels[i]));
-    const femaleTrials = femalePaths.map((p, i) => makeImageTrial('Female', p, femaleLabels[i]));
-
-    // Randomize block order
+    // Randomize block order (Male vs Female)
     const blocks = jsPsych.randomization.shuffle([
       { intro: maleIntro,   trials: maleTrials },
       { intro: femaleIntro, trials: femaleTrials }
@@ -805,21 +948,22 @@ thankYou.on_load = () => {
     timeline.push(blocks[1].intro, ...blocks[1].trials);
     timeline.push(saveGate, requireCloudResearchId, thankYou);
 
-    // Run
     await ensureFirebaseAuth();
     jsPsych.run(timeline);
 
   } catch (err) {
     console.error(err);
-    document.body.innerHTML = `
-      <div style="max-width:900px;margin:40px auto;font-family:Arial, sans-serif;">
-        <h2 style="color:#b00;">Experiment setup error</h2>
-        <p>Most likely cause: the script couldn't find enough existing images in <code>${IMAGE_DIR}/</code>
-           to satisfy the required 2 Attractive / 2 Average / 2 Unattractive balance for one sex block.</p>
-        <pre style="white-space:pre-wrap;background:#f7f7f7;border:1px solid #ddd;padding:12px;border-radius:8px;">
+    // If strict-cb threw, it already displayed the error screen.
+    // But we keep a generic fallback just in case.
+    if (!document.body.innerHTML || document.body.innerHTML.trim().length === 0) {
+      document.body.innerHTML = `
+        <div style="max-width:900px;margin:40px auto;font-family:Arial, sans-serif;">
+          <h2 style="color:#b00;">Experiment setup error</h2>
+          <pre style="white-space:pre-wrap;background:#f7f7f7;border:1px solid #ddd;padding:12px;border-radius:8px;">
 ${String(err && err.message ? err.message : err)}
-        </pre>
-      </div>
-    `;
+          </pre>
+        </div>
+      `;
+    }
   }
 })();
