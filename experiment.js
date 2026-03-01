@@ -3,6 +3,10 @@
  * Two blocks (Male / Female) — block order randomized
  * 6 trials per block
  *
+ * THIS VERSION: ONLY AVERAGE HEIGHT IMAGES
+ *   - 18 Male images total (6 faces × 3 attractiveness levels at height=2)
+ *   - 18 Female images total (6 faces × 3 attractiveness levels at height=2)
+ *
  * REQUIRED COUNTERBALANCE LINKS:
  *   ?cb=1  OR  ?cb=2  OR  ?cb=3
  * If ?cb is missing/invalid: show error screen and DO NOT start.
@@ -40,7 +44,9 @@
 
 const IMAGE_DIR = 'all_images';
 const FACE_IDS = [1, 2, 3, 4, 5, 6];
-const HEIGHT_CODES = ['2',]; // 1=Tall,2=Average,3=Short
+
+// IMPORTANT CHANGE: ONLY AVERAGE HEIGHT CODE "2"
+const HEIGHT_CODES = ['2']; // ONLY Average
 
 // Filename attractiveness codes: ''=Attractive, '.2'=Average, '.3'=Unattractive
 const ATTR_CODES = ['', '.2', '.3'];
@@ -233,16 +239,16 @@ window.addEventListener('beforeunload', beforeUnloadHandler);
 
 // Pair schedule by group (3 pairs; each pair repeated twice)
 const PAIR_LEVELS_BY_GROUP = {
-  1: [1, 0, 2], // (1,1) then (0,0) then (2,2)
-  2: [0, 2, 1], // (0,0) then (2,2) then (1,1)
-  3: [2, 1, 0]  // (2,2) then (1,1) then (0,0)
+  1: [1, 0, 2],
+  2: [0, 2, 1],
+  3: [2, 1, 0]
 };
 
 // Map level -> filename attractiveness code
 function levelToAttrCode(levelNum){
-  if (levelNum === 1) return '';   // Attractive
-  if (levelNum === 0) return '.2'; // Average
-  return '.3';                     // Unattractive
+  if (levelNum === 1) return '';   // Attractive -> M.F.X_2.png
+  if (levelNum === 0) return '.2'; // Average    -> M.F.X_2.2.png
+  return '.3';                     // Unattractive -> M.F.X_2.3.png
 }
 
 // Label mapping sets by CB group
@@ -257,13 +263,12 @@ function levelToLabelCategory(levelNum, group){
   return map[levelNum];
 }
 
-// Sentence order flip: random per session so not everyone sees sentence1 first
 function getSentenceFlipRandom() {
-  return Math.random() < 0.5 ? 0 : 1; // 0 or 1
+  return Math.random() < 0.5 ? 0 : 1;
 }
 
 /* ============================================================================
-   IMAGE LOOKUP (NO 404s)
+   IMAGE LOOKUP (NO 404s) — NOW ONLY SEARCHES HEIGHT_CODE "2"
    ============================================================================ */
 
 async function findExistingFile(sexTag, face_id, h, a) {
@@ -281,7 +286,7 @@ async function buildAvailability(sexTag) {
     availability[face_id] = {};
     for (const a of ATTR_CODES) {
       availability[face_id][a] = [];
-      for (const h of HEIGHT_CODES) {
+      for (const h of HEIGHT_CODES) { // <-- ONLY '2'
         const found = await findExistingFile(sexTag, face_id, h, a);
         if (found) availability[face_id][a].push(found);
       }
@@ -296,10 +301,9 @@ async function buildAvailability(sexTag) {
 
 async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) {
   const availability = await buildAvailability(sexTag);
-  const remainingFaces = jsPsych.randomization.shuffle([...FACE_IDS]); // identities randomized per participant
+  const remainingFaces = jsPsych.randomization.shuffle([...FACE_IDS]);
   const pairLevels = PAIR_LEVELS_BY_GROUP[group] || PAIR_LEVELS_BY_GROUP[1];
 
-  // Sanity check templates
   ["Chess","Basketball","Neutral"].forEach(cat => {
     const arr = LABEL_TEMPLATES[cat] || [];
     if (arr.length !== 2) throw new Error(`LABEL_TEMPLATES.${cat} must have exactly 2 sentences.`);
@@ -309,16 +313,14 @@ async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) 
   const specs = [];
 
   for (let pairIndex = 0; pairIndex < 3; pairIndex++) {
-    const levelNum = pairLevels[pairIndex];              // 1/0/2
-    const attrCode = levelToAttrCode(levelNum);          // ''/'.2'/'.3'
+    const levelNum = pairLevels[pairIndex];
+    const attrCode = levelToAttrCode(levelNum);
     const labelCategory = levelToLabelCategory(levelNum, group);
 
-    // pick two identities for this pair (random, without replacement)
     const face1 = remainingFaces.pop();
     const face2 = remainingFaces.pop();
-    const pairFaces = jsPsych.randomization.shuffle([face1, face2]); // random order within pair (still adjacent)
+    const pairFaces = jsPsych.randomization.shuffle([face1, face2]);
 
-    // sentence order within the pair flipped for some sessions
     const variantOrder = (sentenceFlip === 1) ? [2, 1] : [1, 2];
 
     for (let within = 0; within < 2; within++) {
@@ -329,14 +331,14 @@ async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) 
       if (!options.length) {
         const readable = (attrCode === '') ? 'Attractive' : (attrCode === '.2') ? 'Average' : 'Unattractive';
         throw new Error(
-          `Missing images for ${sexTag} face_id=${face_id} at ${readable}. ` +
-          `Expected: ${sexTag}.${face_id}_<height>${attrCode}<ext> in ${IMAGE_DIR}/`
+          `Missing images for ${sexTag} face_id=${face_id} at ${readable} (height must be 2 only). ` +
+          `Expected e.g.: ${sexTag}.${face_id}_2${attrCode}<ext> inside ${IMAGE_DIR}/`
         );
       }
 
       const imgPath = choice(options);
 
-      const label_variant = variantOrder[within]; // 1 or 2
+      const label_variant = variantOrder[within];
       const template = LABEL_TEMPLATES[labelCategory][label_variant - 1];
       const labelText = template.replaceAll("{NAME}", name);
 
@@ -360,7 +362,6 @@ async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) 
     }
   }
 
-  // Hard enforcement: 2/2/2 levels, 2/2/2 labels, and per label type variants 1&2 each exactly once
   const levelCounts = { 0: 0, 1: 0, 2: 0 };
   const labelCounts = { Chess: 0, Basketball: 0, Neutral: 0 };
   const variantCounts = { Chess: {1:0, 2:0}, Basketball: {1:0, 2:0}, Neutral: {1:0, 2:0} };
@@ -385,7 +386,6 @@ async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) 
     );
   }
 
-  // IMPORTANT: do not shuffle final 6 trials; pairs must stay together
   return specs;
 }
 
@@ -614,7 +614,6 @@ function makeImageTrial(blockLabel, spec) {
         document.body.dataset.interactTimes = JSON.stringify(times);
       }, { once: true });
 
-      /* ====== HARD 40% IMAGE / 60% FORM SCALE-FIT ====== */
       (function fitWithStrictSplitAndFormScale() {
         const stage   = document.querySelector('.jspsych-content');
         const preWrap = stage?.querySelector('.preamble-wrap');
@@ -764,7 +763,6 @@ const requireCloudResearchId = {
       jsPsych.data.addProperties({ participantId_manual_fallback: cloudresearch_id_manual });
     }
 
-    // update the SAME Firebase record immediately
     updateFirebaseWithManualCRID().catch(e => console.warn("CRID update failed:", e));
   }
 };
@@ -838,12 +836,12 @@ function finalSave() {
     assignmentId,
     projectId,
     trials,
-    client_version: 'cb_required_v1',
+    client_version: 'cb_required_avgHeightOnly_v1',
     createdAt: firebase.database.ServerValue.TIMESTAMP
   };
 
   return db.ref('responses').push(payload).then((ref) => {
-    window.__fb_response_key__ = ref.key; // required for later update
+    window.__fb_response_key__ = ref.key;
     return ref;
   });
 }
@@ -865,7 +863,7 @@ function updateFirebaseWithManualCRID() {
 
 (async function bootstrap() {
   try {
-    const group = getCBGroupOrStop();       // <-- REQUIRED ?cb=
+    const group = getCBGroupOrStop();
     const sentenceFlip = getSentenceFlipRandom();
 
     jsPsych.data.addProperties({
@@ -887,7 +885,6 @@ function updateFirebaseWithManualCRID() {
     const maleTrials   = maleSpecs.map(spec => makeImageTrial('Male', spec));
     const femaleTrials = femaleSpecs.map(spec => makeImageTrial('Female', spec));
 
-    // Randomize block order (Male vs Female)
     const blocks = jsPsych.randomization.shuffle([
       { intro: maleIntro,   trials: maleTrials },
       { intro: femaleIntro, trials: femaleTrials }
@@ -904,7 +901,6 @@ function updateFirebaseWithManualCRID() {
     jsPsych.run(timeline);
 
   } catch (err) {
-    // If cb missing, we already showed a page-level error; just stop here.
     console.error(err);
   }
 })();
