@@ -40,7 +40,7 @@
 
 const IMAGE_DIR = 'all_images';
 const FACE_IDS = [1, 2, 3, 4, 5, 6];
-const HEIGHT_CODES = ['1', '2', '3']; // 1=Tall,2=Average,3=Short
+const HEIGHT_CODES = ['2',]; // 1=Tall,2=Average,3=Short
 
 // Filename attractiveness codes: ''=Attractive, '.2'=Average, '.3'=Unattractive
 const ATTR_CODES = ['', '.2', '.3'];
