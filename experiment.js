@@ -433,7 +433,7 @@ const welcome = {
   pages: [
     `<div class="center">
        <h2>Welcome</h2>
-       <p>Welcome to the experiment. This experiment will take approximately 15 minutes to complete.</p>
+       <p>Welcome to the experiment. This experiment will take approximately 5 minutes to complete.</p>
        <p>Please make sure you are in a quiet space and have a strong Wi-Fi connection while doing this experiment.</p>
        <p>If you wish to stop participating in this study at any point, simply press the "Esc" button on your keyboard and close the window; your data will not be recorded.</p>
      </div>`
