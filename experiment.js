@@ -525,12 +525,12 @@ function makeImageTrial(blockLabel, spec) {
   const questionNames = ['Q1', 'Q2'];
 
   // ✅ CHANGE: description is now bolded for all groups/blocks
-  const htmlBlock = `
-    <div class="stimulus-label"
-         style="max-width:900px; margin: 0 auto 12px; padding: 0 16px;
-                text-align:center; font-size:18px; line-height:1.35; color:#111;">
-      <strong>${spec.image_label_text}</strong>
-    </div>
+  <div class="stimulus-label"
+     style="max-width:900px; margin: 0 auto 12px; padding: 0 16px;
+            text-align:center; font-size:18px; line-height:1.35; color:#111;
+            font-weight: 800;">
+  ${spec.image_label_text}
+</div>
 
     <div class="q-block">
       ${sliderHTML(questionNames[0], qTexts[0])}
