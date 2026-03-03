@@ -1,11 +1,13 @@
 /***********************
  * Perception Study (PNG/JPG images) — AVERAGE HEIGHT ONLY
  * Two blocks (Male / Female) — block order randomized
- * 6 trials per block (3 adjacent pairs)
+ * 6 trials per block (faces 1–6)
  *
- * REQUIRED COUNTERBALANCE LINKS:
- *   ?cb=1  OR  ?cb=2  OR  ?cb=3
- * If ?cb is missing/invalid: show error screen and DO NOT start.
+ * REQUIRED LINKS:
+ *   ?cb=1|2|3          (condition group; fixes identity->attractiveness->label mapping)
+ *   ?sc=1|2|3|4        (sentence counterbalancing cell; to get 10 per cell within each cb group)
+ *
+ * If ?cb or ?sc missing/invalid: show error screen and DO NOT start.
  *
  * IMAGE RULES (THIS VERSION):
  *   - ONLY Average height code = 2
@@ -15,29 +17,17 @@
  *       all_images/M.F.<face>_2.3.png   (Unattractive)
  *     and the same for F.F
  *
- * PAIRED COUNTERBALANCING (pairs stay together):
- *   Trials 1–2: same attractiveness level
- *   Trials 3–4: same attractiveness level
- *   Trials 5–6: same attractiveness level
+ * DESIGN (FIXED WITHIN cb GROUP):
+ *   Each face_id is tied to a specific attractiveness level AND label type (varies by cb group).
+ *   ONLY the order of appearance is randomized (within each block).
  *
- * Level order by CB group:
- *   CB1: (1,1) (0,0) (2,2)
- *   CB2: (0,0) (2,2) (1,1)
- *   CB3: (2,2) (1,1) (0,0)
- * where 1=Attractive, 0=Average, 2=Unattractive
+ * SENTENCE COUNTERBALANCING (within each cb group; n=10 per sc cell):
+ *   Let odd faces = A,C,E = 1,3,5 and even faces = B,D,F = 2,4,6
  *
- * Labels counterbalanced across CB groups via mapping sets:
- *   CB1: Attractive->Chess,      Average->Basketball, Unattractive->Neutral
- *   CB2: Attractive->Neutral,    Average->Chess,      Unattractive->Basketball
- *   CB3: Attractive->Basketball, Average->Neutral,    Unattractive->Chess
- *
- * Sentence order within each pair:
- *   Random per participant session so not everyone sees sentence #1 first.
- *
- * Hard enforcement (per block):
- *   - Exactly 2 Attractive, 2 Average, 2 Unattractive
- *   - Exactly 2 Chess, 2 Basketball, 2 Neutral
- *   - For each label type: sentence #1 used once, sentence #2 used once
+ *   sc=1: Male 1–2  (odd=S1, even=S2), Female 3–4 (odd=S3, even=S4)
+ *   sc=2: Male 2–3  (odd=S2, even=S3), Female 4–1 (odd=S4, even=S1)
+ *   sc=3: Male 3–4  (odd=S3, even=S4), Female 1–2 (odd=S1, even=S2)
+ *   sc=4: Male 4–1  (odd=S4, even=S1), Female 2–3 (odd=S2, even=S3)
  *
  * CloudResearch ID:
  *   - Save once at end (saveGate)
@@ -46,13 +36,8 @@
 
 /* ========= BASIC OPTIONS ========= */
 
-// IMPORTANT: folder name must match your repo EXACTLY
 const IMAGE_DIR = 'all_images';
-
-// Face identities (6 male + 6 female)
 const FACE_IDS = [1, 2, 3, 4, 5, 6];
-
-// THIS STUDY: Average height only
 const HEIGHT_CODE = '2';
 
 // Attractiveness codes in filename:
@@ -60,29 +45,33 @@ const HEIGHT_CODE = '2';
 // Average:    '.2'=> ..._2.2.png
 // Unattractive:'.3'=> ..._2.3.png
 const ATTR_CODES = ['', '.2', '.3'];
-
-// Extensions supported
 const EXT_CANDIDATES = ['.png', '.PNG', '.jpg', '.JPG', '.jpeg', '.JPEG'];
 
 /* ========= IDENTITY NAMES ========= */
 
-const MALE_NAMES_BY_FACE = { 1:"George", 2:"John", 3:"Terry", 4:"Michael", 5:"Jack", 6:"Wilson" };
-const FEMALE_NAMES_BY_FACE = { 1:"Emma", 2:"Olivia", 3:"Mary", 4:"Emily", 5:"Samantha", 6:"Jessica" };
+const MALE_NAMES_BY_FACE   = { 1:"George", 2:"John",   3:"Terry",  4:"Michael", 5:"Jack",     6:"Wilson" };
+const FEMALE_NAMES_BY_FACE = { 1:"Emma",   2:"Olivia", 3:"Mary",   4:"Emily",   5:"Samantha", 6:"Jessica" };
 
-/* ========= LABEL SENTENCES (2 per category) ========= */
+/* ========= LABEL SENTENCES (4 per category) ========= */
 
 const LABEL_TEMPLATES = {
-  Chess: [
-    "{NAME} is an introvert who enjoys logic games and crossword puzzles.",
-    "{NAME} competed in the National Mathematical Olympiad in high school and won 5th place."
-  ],
   Basketball: [
     "{NAME} volunteers as a part-time youth volleyball coach.",
-    "{NAME} was on the football team in high school."
+    "{NAME} was on the football team in high school.",
+    "{NAME} is a marathon runner.",
+    "{NAME} competed in the Youth Olympic Games as a high jumper while in high school."
+  ],
+  Chess: [
+    "{NAME} is an introvert who enjoys logic games and crossword puzzles.",
+    "{NAME} competed in the National Mathematical Olympiad in high school and won 5th place.",
+    "{NAME} is an A+ student and co-founder of the college math club.",
+    "{NAME}'s favorite books are The Art of War by Sun Tzu and How to Think Logically by Seay and Nuccetelli."
   ],
   Neutral: [
     "{NAME} commutes to the college campus.",
-    "{NAME} works part time at a retail store."
+    "{NAME} works part time at a retail store.",
+    "{NAME} works part-time at a coffee shop.",
+    "{NAME} lives in campus housing."
   ]
 };
 
@@ -121,7 +110,6 @@ function getParam(name) {
 function choice(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
 
 async function urlExists(url) {
-  // HEAD first (fast); fallback to GET (some hosts block HEAD)
   try {
     const r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
     if (r.ok) return true;
@@ -134,21 +122,21 @@ async function urlExists(url) {
   }
 }
 
-/* ========= META PARSER (matches your filename style) ========= */
+function isOddFace(face_id) { return (face_id % 2) === 1; } // 1,3,5 = A,C,E
+
+/* ========= META PARSER ========= */
 
 function parseMeta(imgPath) {
   const name = imgPath.split('/').pop();
-
-  // Example: M.F.6_2.3.png   OR  F.F.2_2.png  OR  M.F.1_2.2.jpg
   const m = name.match(/^([MF]\.F)\.(\d+)_([123])(?:\.(2|3))?\.(png|jpg|jpeg)$/i);
 
   const meta = { sex:null, face_id:null, height_code:null, height_label:null, attract_code:null, attract_label:null };
   if (!m) return meta;
 
-  const tag  = m[1];           // M.F or F.F
+  const tag  = m[1];
   const face = parseInt(m[2], 10);
-  const h    = m[3];           // 1/2/3 (but we use only 2)
-  const a    = m[4] || '';     // '2' or '3' or ''
+  const h    = m[3];
+  const a    = m[4] || '';
 
   meta.sex = (tag === 'F.F') ? 'Female' : 'Male';
   meta.face_id = face;
@@ -200,29 +188,56 @@ const jsPsych = initJsPsych({
   message_progress_bar: 'Progress',
 });
 
-/* ========= REQUIRED: CB GROUP FROM URL ========= */
+/* ========= REQUIRED: CB GROUP + SENTENCE CELL ========= */
+
+function showParamErrorAndStop(msgHTML) {
+  document.body.innerHTML = `
+    <div style="max-width:920px;margin:40px auto;font-family:Arial, sans-serif;line-height:1.4;">
+      <h2 style="color:#b00;">Link error</h2>
+      ${msgHTML}
+    </div>
+  `;
+}
 
 function getCBGroupOrStop() {
   const cbRaw = getParam('cb');
   const cb = parseInt(cbRaw, 10);
 
   if (![1,2,3].includes(cb)) {
-    document.body.innerHTML = `
-      <div style="max-width:900px;margin:40px auto;font-family:Arial, sans-serif;">
-        <h2 style="color:#b00;">Missing / invalid counterbalance link</h2>
-        <p>This study must be opened with one of these URLs:</p>
-        <ul>
-          <li><code>?cb=1</code></li>
-          <li><code>?cb=2</code></li>
-          <li><code>?cb=3</code></li>
-        </ul>
-        <p>Example:</p>
-        <pre style="white-space:pre-wrap;background:#f7f7f7;border:1px solid #ddd;padding:12px;border-radius:8px;">${location.origin + location.pathname}?cb=1</pre>
-      </div>
-    `;
+    showParamErrorAndStop(`
+      <p>This study must be opened with one of these URLs:</p>
+      <ul>
+        <li><code>?cb=1&amp;sc=1</code> … <code>?cb=1&amp;sc=4</code></li>
+        <li><code>?cb=2&amp;sc=1</code> … <code>?cb=2&amp;sc=4</code></li>
+        <li><code>?cb=3&amp;sc=1</code> … <code>?cb=3&amp;sc=4</code></li>
+      </ul>
+      <p>Example:</p>
+      <pre style="white-space:pre-wrap;background:#f7f7f7;border:1px solid #ddd;padding:12px;border-radius:8px;">${location.origin + location.pathname}?cb=1&sc=1</pre>
+    `);
     throw new Error("Missing/invalid cb parameter.");
   }
   return cb;
+}
+
+function getSentenceCellOrStop() {
+  const scRaw = getParam('sc');
+  const sc = parseInt(scRaw, 10);
+
+  if (![1,2,3,4].includes(sc)) {
+    showParamErrorAndStop(`
+      <p>This study must be opened with a sentence counterbalancing cell:</p>
+      <ul>
+        <li><code>&amp;sc=1</code></li>
+        <li><code>&amp;sc=2</code></li>
+        <li><code>&amp;sc=3</code></li>
+        <li><code>&amp;sc=4</code></li>
+      </ul>
+      <p>Example:</p>
+      <pre style="white-space:pre-wrap;background:#f7f7f7;border:1px solid #ddd;padding:12px;border-radius:8px;">${location.origin + location.pathname}?cb=1&sc=1</pre>
+    `);
+    throw new Error("Missing/invalid sc parameter.");
+  }
+  return sc;
 }
 
 /* ========= PARTICIPANT IDS ========= */
@@ -249,38 +264,66 @@ const beforeUnloadHandler = (e) => { e.preventDefault(); e.returnValue = ''; };
 window.addEventListener('beforeunload', beforeUnloadHandler);
 
 /* ============================================================================
-   COUNTERBALANCING (by cb=1/2/3)
+   FIXED IDENTITY -> (ATTRACTIVENESS, LABEL) MAPPING BY GROUP
    ============================================================================ */
 
-// Pair schedule by group (3 pairs; each pair repeated twice)
-const PAIR_LEVELS_BY_GROUP = {
-  1: [1, 0, 2],
-  2: [0, 2, 1],
-  3: [2, 1, 0]
-};
-
-// Map level -> filename attractiveness code
-function levelToAttrCode(levelNum){
-  if (levelNum === 1) return '';   // Attractive -> ..._2.png
-  if (levelNum === 0) return '.2'; // Average    -> ..._2.2.png
-  return '.3';                     // Unattractive -> ..._2.3.png
+function labelToShort(label) {
+  if (label === 'Chess') return 'Chess';
+  if (label === 'Basketball') return 'Basketball';
+  return 'Neutral';
 }
 
-// Label mapping sets by CB group
-const LABEL_MAP_BY_GROUP = {
-  1: { 1:'Chess',      0:'Basketball', 2:'Neutral' },
-  2: { 1:'Neutral',    0:'Chess',      2:'Basketball' },
-  3: { 1:'Basketball', 0:'Neutral',    2:'Chess' }
+// NOTE: You described A–F; here we map A..F -> face_ids 1..6
+// cb=3 line had a typo earlier; we implement the intended mapping:
+// Group 3: A,B = Average->Neutral ; C,D = Unattractive->Chess ; E,F = Attractive->Basketball
+const FIXED_MAP_BY_GROUP = {
+  1: {
+    1:{attr:'',   label:'Chess'},      2:{attr:'',   label:'Chess'},
+    3:{attr:'.2', label:'Basketball'}, 4:{attr:'.2', label:'Basketball'},
+    5:{attr:'.3', label:'Neutral'},    6:{attr:'.3', label:'Neutral'}
+  },
+  2: {
+    1:{attr:'.3', label:'Basketball'}, 2:{attr:'.3', label:'Basketball'},
+    3:{attr:'',   label:'Neutral'},    4:{attr:'',   label:'Neutral'},
+    5:{attr:'.2', label:'Chess'},      6:{attr:'.2', label:'Chess'}
+  },
+  3: {
+    1:{attr:'.2', label:'Neutral'},    2:{attr:'.2', label:'Neutral'},
+    3:{attr:'.3', label:'Chess'},      4:{attr:'.3', label:'Chess'},
+    5:{attr:'',   label:'Basketball'}, 6:{attr:'',   label:'Basketball'}
+  }
 };
 
-function levelToLabelCategory(levelNum, group){
-  const map = LABEL_MAP_BY_GROUP[group] || LABEL_MAP_BY_GROUP[1];
-  return map[levelNum];
+function attrCodeToLabel(attrCode) {
+  if (attrCode === '') return 'Attractive';
+  if (attrCode === '.2') return 'Average';
+  return 'Unattractive';
 }
 
-// Sentence order flip: random per session
-function getSentenceFlipRandom() {
-  return Math.random() < 0.5 ? 0 : 1;
+/* ============================================================================
+   SENTENCE CELL LOGIC (sc=1..4)
+   ============================================================================ */
+
+// Returns sentence version number 1..4, based on:
+// - sc cell
+// - block sexTag (M.F vs F.F)
+// - face_id parity (odd = A,C,E ; even = B,D,F)
+function getSentenceVersion(face_id, sexTag, sc) {
+  const odd = isOddFace(face_id);
+  const isMaleBlock = (sexTag === 'M.F');
+
+  // For each sc, define (maleOdd, maleEven, femaleOdd, femaleEven)
+  const map = {
+    1: { mO:1, mE:2, fO:3, fE:4 }, // Male 1-2 ; Female 3-4
+    2: { mO:2, mE:3, fO:4, fE:1 }, // Male 2-3 ; Female 4-1
+    3: { mO:3, mE:4, fO:1, fE:2 }, // Male 3-4 ; Female 1-2
+    4: { mO:4, mE:1, fO:2, fE:3 }  // Male 4-1 ; Female 2-3
+  }[sc];
+
+  if (!map) return 1;
+
+  if (isMaleBlock) return odd ? map.mO : map.mE;
+  return odd ? map.fO : map.fE;
 }
 
 /* ============================================================================
@@ -289,7 +332,6 @@ function getSentenceFlipRandom() {
 
 async function findExistingFile(sexTag, face_id, attrCode) {
   for (const ext of EXT_CANDIDATES) {
-    // STRICT expected format: M.F.6_2.3.png etc
     const filename = `${sexTag}.${face_id}_${HEIGHT_CODE}${attrCode}${ext}`;
     const url = `${IMAGE_DIR}/${filename}`;
     if (await urlExists(url)) return url;
@@ -310,99 +352,90 @@ async function buildAvailability(sexTag) {
 }
 
 /* ============================================================================
-   BUILD TRIAL SPECS (STRICT PAIRS + HARD ENFORCEMENT)
+   BUILD TRIAL SPECS (FIXED CONDITIONS PER GROUP; RANDOM ORDER)
    ============================================================================ */
 
-async function buildBlockTrialSpecsPaired(sexTag, group, nameMap, sentenceFlip) {
-  const availability = await buildAvailability(sexTag);
-  const remainingFaces = jsPsych.randomization.shuffle([...FACE_IDS]);
-  const pairLevels = PAIR_LEVELS_BY_GROUP[group] || PAIR_LEVELS_BY_GROUP[1];
-
+async function buildBlockTrialSpecsFixed(sexTag, group, sc, nameMap) {
+  // Sanity check: 4 sentences per label
   ["Chess","Basketball","Neutral"].forEach(cat => {
     const arr = LABEL_TEMPLATES[cat] || [];
-    if (arr.length !== 2) throw new Error(`LABEL_TEMPLATES.${cat} must have exactly 2 sentences.`);
-    if (arr[0].trim() === arr[1].trim()) throw new Error(`LABEL_TEMPLATES.${cat} must have 2 DIFFERENT sentences.`);
+    if (arr.length !== 4) throw new Error(`LABEL_TEMPLATES.${cat} must have exactly 4 sentences.`);
+    const uniq = new Set(arr.map(s => s.trim()));
+    if (uniq.size !== 4) throw new Error(`LABEL_TEMPLATES.${cat} must have 4 DIFFERENT sentences.`);
   });
+
+  const availability = await buildAvailability(sexTag);
+  const fixed = FIXED_MAP_BY_GROUP[group];
+  if (!fixed) throw new Error(`Missing FIXED_MAP_BY_GROUP for cb=${group}.`);
 
   const specs = [];
 
-  for (let pairIndex = 0; pairIndex < 3; pairIndex++) {
-    const levelNum = pairLevels[pairIndex];
-    const attrCode = levelToAttrCode(levelNum);
-    const labelCategory = levelToLabelCategory(levelNum, group);
+  for (const face_id of FACE_IDS) {
+    const name = nameMap[face_id] || "George";
 
-    const face1 = remainingFaces.pop();
-    const face2 = remainingFaces.pop();
-    const pairFaces = jsPsych.randomization.shuffle([face1, face2]);
+    const cond = fixed[face_id];
+    if (!cond) throw new Error(`Missing fixed mapping for cb=${group}, face_id=${face_id}.`);
 
-    const variantOrder = (sentenceFlip === 1) ? [2, 1] : [1, 2];
+    const attrCode = cond.attr;          // '' / '.2' / '.3'
+    const labelCategory = cond.label;    // Chess/Basketball/Neutral
+    const attractLabel = attrCodeToLabel(attrCode);
 
-    for (let within = 0; within < 2; within++) {
-      const face_id = pairFaces[within];
-      const name = nameMap[face_id] || "George";
+    const options = availability?.[face_id]?.[attrCode] || [];
+    if (!options.length) {
+      throw new Error(
+        `Missing image for ${sexTag} face_id=${face_id} at ${attractLabel}. ` +
+        `Expected: ${IMAGE_DIR}/${sexTag}.${face_id}_${HEIGHT_CODE}${attrCode}<ext> (e.g., .png)`
+      );
+    }
 
-      const options = availability?.[face_id]?.[attrCode] || [];
-      if (!options.length) {
-        const readable = (attrCode === '') ? 'Attractive' : (attrCode === '.2') ? 'Average' : 'Unattractive';
-        throw new Error(
-          `Missing image for ${sexTag} face_id=${face_id} at ${readable}. ` +
-          `Expected: ${IMAGE_DIR}/${sexTag}.${face_id}_${HEIGHT_CODE}${attrCode}<ext> (e.g., .png)`
-        );
-      }
+    const imgPath = choice(options);
 
-      const imgPath = choice(options);
+    // Sentence version from sc + parity + block sex
+    const label_variant = getSentenceVersion(face_id, sexTag, sc); // 1..4
+    const template = LABEL_TEMPLATES[labelCategory][label_variant - 1];
+    const labelText = template.replaceAll("{NAME}", name);
 
-      const label_variant = variantOrder[within];
-      const template = LABEL_TEMPLATES[labelCategory][label_variant - 1];
-      const labelText = template.replaceAll("{NAME}", name);
+    specs.push({
+      face_id,
+      identity_name: name,
+      counterbalance_group: group,
+      sentence_cell: sc,
 
-      specs.push({
-        pair_index: pairIndex + 1,
-        within_pair_index: within + 1,
-        face_id,
-        identity_name: name,
+      attract_code_expected: attrCode,
+      attract_label_fixed: attractLabel,
 
-        counterbalance_group: group,
-        sentence_flip: sentenceFlip,
-        counterbalance_level: levelNum,
+      label_category: labelCategory,
+      label_variant,
+      image_label_text: labelText,
 
-        attract_code_expected: attrCode,
-        label_category: labelCategory,
-        label_variant: label_variant,
-        image_label_text: labelText,
+      image: imgPath
+    });
+  }
 
-        image: imgPath
-      });
+  // Validate: exactly 2 per attr and 2 per label per block (given fixed maps)
+  const attrCounts = { Attractive:0, Average:0, Unattractive:0 };
+  const labelCounts = { Chess:0, Basketball:0, Neutral:0 };
+  for (const s of specs) {
+    attrCounts[s.attract_label_fixed] += 1;
+    labelCounts[s.label_category] += 1;
+  }
+  const okAttr = (attrCounts.Attractive === 2 && attrCounts.Average === 2 && attrCounts.Unattractive === 2);
+  const okLab = (labelCounts.Chess === 2 && labelCounts.Basketball === 2 && labelCounts.Neutral === 2);
+  if (!okAttr || !okLab) {
+    throw new Error(`Fixed-map enforcement failed for ${sexTag} cb=${group}. Attr=${JSON.stringify(attrCounts)} Labels=${JSON.stringify(labelCounts)}`);
+  }
+
+  // Validate: within each label type, the 2 faces must have 2 different sentence variants
+  for (const cat of ["Chess","Basketball","Neutral"]) {
+    const vs = specs.filter(s => s.label_category === cat).map(s => s.label_variant);
+    const uniq = new Set(vs);
+    if (uniq.size !== 2) {
+      throw new Error(`Sentence variants not distinct within ${sexTag} cb=${group} sc=${sc} label=${cat}. Got: ${vs.join(',')}`);
     }
   }
 
-  // Hard enforcement
-  const levelCounts = { 0: 0, 1: 0, 2: 0 };
-  const labelCounts = { Chess: 0, Basketball: 0, Neutral: 0 };
-  const variantCounts = { Chess: {1:0, 2:0}, Basketball: {1:0, 2:0}, Neutral: {1:0, 2:0} };
-
-  for (const s of specs) {
-    levelCounts[s.counterbalance_level] += 1;
-    labelCounts[s.label_category] += 1;
-    variantCounts[s.label_category][s.label_variant] += 1;
-  }
-
-  const okLevels = (levelCounts[0] === 2 && levelCounts[1] === 2 && levelCounts[2] === 2);
-  const okLabels = (labelCounts.Chess === 2 && labelCounts.Basketball === 2 && labelCounts.Neutral === 2);
-  const okVariants =
-    (variantCounts.Chess[1] === 1 && variantCounts.Chess[2] === 1) &&
-    (variantCounts.Basketball[1] === 1 && variantCounts.Basketball[2] === 1) &&
-    (variantCounts.Neutral[1] === 1 && variantCounts.Neutral[2] === 1);
-
-  if (!okLevels || !okLabels || !okVariants) {
-    throw new Error(
-      `Counterbalance enforcement failed for ${sexTag}. ` +
-      `Levels: ${JSON.stringify(levelCounts)}; Labels: ${JSON.stringify(labelCounts)}; Variants: ${JSON.stringify(variantCounts)}`
-    );
-  }
-
-  // DO NOT shuffle final 6 trials; pairs must stay together
-  return specs;
+  // Randomize order within block (this is what you asked for)
+  return jsPsych.randomization.shuffle(specs);
 }
 
 /* ========= FULLSCREEN + SCREENS ========= */
@@ -450,8 +483,8 @@ const instructions = {
     `<div class="center">
        <h2>Instructions</h2>
        <p><strong>In this experiment, we will ask you to put yourself in the position of a college basketball team captain and college chess team captain tasked with selecting new team members. There are male and female teams.</strong></p>
-       <p>On each screen, you will see one image and two questions.</p>
-       <p><strong>Please answer the questions based on your perception of the presented image.</strong></p>
+       <p>On each screen, you will see one image, a short description of the person in the image, and two questions.</p>
+       <p><strong>Please answer the questions based on your perception of the presented image and the description.</strong></p>
        <p>Use the 1–7 scale for each question. <strong>The scale is pre-set to 4 by default. However, you must still click or tap on your chosen response — including 4 — to record your answer</strong>.</p>
        <p>Both answers are required.</p>
      </div>`
@@ -510,7 +543,7 @@ function makeImageTrial(blockLabel, spec) {
     <div class="stimulus-label"
          style="max-width:900px; margin: 0 auto 12px; padding: 0 16px;
                 text-align:center; font-size:18px; line-height:1.35; color:#111;">
-      ${spec.image_label_text}
+      </strong>${spec.image_label_text}</strong>
     </div>
 
     <div class="q-block">
@@ -536,21 +569,18 @@ function makeImageTrial(blockLabel, spec) {
       block: blockLabel,
       image: spec.image,
 
-      pair_index: spec.pair_index,
-      within_pair_index: spec.within_pair_index,
-
       face_id: spec.face_id,
       identity_name: spec.identity_name,
 
       counterbalance_group: spec.counterbalance_group,
-      sentence_flip: spec.sentence_flip,
-      counterbalance_level: spec.counterbalance_level,
+      sentence_cell: spec.sentence_cell,
+
+      attract_code_expected: spec.attract_code_expected,
+      attract_label_fixed: spec.attract_label_fixed,
 
       label_category: spec.label_category,
       label_variant: spec.label_variant,
       image_label_text: spec.image_label_text,
-
-      attract_code_expected: spec.attract_code_expected,
 
       ...parseMeta(spec.image)
     },
@@ -820,15 +850,11 @@ function finalSave() {
       block: row.block,
       image: row.image,
 
-      pair_index: row.pair_index,
-      within_pair_index: row.within_pair_index,
-
       face_id: row.face_id,
       identity_name: row.identity_name,
 
       counterbalance_group: row.counterbalance_group,
-      sentence_flip: row.sentence_flip,
-      counterbalance_level: row.counterbalance_level,
+      sentence_cell: row.sentence_cell,
 
       label_category: row.label_category,
       label_variant: row.label_variant,
@@ -837,6 +863,9 @@ function finalSave() {
       sex: row.sex,
       height_label: row.height_label,
       attract_label: row.attract_label,
+
+      // fixed design bookkeeping
+      attract_label_fixed: row.attract_label_fixed,
       attract_code_expected: row.attract_code_expected,
 
       rt: row.rt,
@@ -852,8 +881,10 @@ function finalSave() {
     participantId,
     assignmentId,
     projectId,
+    cb_group: jsPsych.data.get().select('counterbalance_group').values[0] ?? null,
+    sentence_cell: jsPsych.data.get().select('sentence_cell').values[0] ?? null,
     trials,
-    client_version: 'cb_required_avgHeightOnly_v2',
+    client_version: 'fixed_identity_cb_sc_avgHeightOnly_v3',
     createdAt: firebase.database.ServerValue.TIMESTAMP
   };
 
@@ -880,16 +911,17 @@ function updateFirebaseWithManualCRID() {
 
 (async function bootstrap() {
   try {
-    const group = getCBGroupOrStop();
-    const sentenceFlip = getSentenceFlipRandom();
+    const group = getCBGroupOrStop();     // REQUIRED
+    const sc    = getSentenceCellOrStop(); // REQUIRED
 
     jsPsych.data.addProperties({
       counterbalance_group: group,
-      sentence_flip: sentenceFlip
+      sentence_cell: sc
     });
 
-    const maleSpecs   = await buildBlockTrialSpecsPaired('M.F', group, MALE_NAMES_BY_FACE, sentenceFlip);
-    const femaleSpecs = await buildBlockTrialSpecsPaired('F.F', group, FEMALE_NAMES_BY_FACE, sentenceFlip);
+    // Build fixed-condition specs, then randomize order within each block
+    const maleSpecs   = await buildBlockTrialSpecsFixed('M.F', group, sc, MALE_NAMES_BY_FACE);
+    const femaleSpecs = await buildBlockTrialSpecsFixed('F.F', group, sc, FEMALE_NAMES_BY_FACE);
 
     const preload = {
       type: jsPsychPreload,
@@ -902,6 +934,7 @@ function updateFirebaseWithManualCRID() {
     const maleTrials   = maleSpecs.map(spec => makeImageTrial('Male', spec));
     const femaleTrials = femaleSpecs.map(spec => makeImageTrial('Female', spec));
 
+    // Randomize block order (Male vs Female)
     const blocks = jsPsych.randomization.shuffle([
       { intro: maleIntro,   trials: maleTrials },
       { intro: femaleIntro, trials: femaleTrials }
