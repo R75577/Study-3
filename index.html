@@ -19,7 +19,7 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
-      max-width: 1000px;   /* FIX: missing semicolon in your version */
+      max-width: 1000px;
       margin: 0 auto;
     }
 
@@ -47,10 +47,8 @@
       overflow: hidden;
     }
 
-    /* NEW: make the description under the image bold globally */
-    .stimulus-label {
-      font-weight: 800;
-    }
+    /* Make description bold (works with your experiment markup) */
+    .stimulus-label { font-weight: 800; }
 
     .q-block { border-top: 2px solid #d5d5d5; padding-top: 10px; }
     .q { margin: 8px 0; }
@@ -125,18 +123,6 @@
     .slider { accent-color: #c0c0c0; opacity: 0.5; transition: all 0.15s ease; }
     .slider.touched { accent-color: #000000; opacity: 1; }
   </style>
-</head>
-
-<body>
-  <script src="./jspsych.js"></script>
-  <script src="./plugins/plugin-instructions.js"></script>
-  <script src="./plugins/plugin-preload.js"></script>
-  <script src="./plugins/plugin-survey-html-form.js"></script>
-  <script src="./plugins/plugin-fullscreen.js"></script>
-
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
   <script>
     window.FIREBASE_CONFIG = {
@@ -150,160 +136,20 @@
     };
   </script>
 
-  <script src="./experiment.js"></script>
-</body>
-</html><!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Perception Study</title>
+  <!-- Defer everything so load order is consistent -->
+  <script defer src="./jspsych.js"></script>
+  <script defer src="./plugins/plugin-instructions.js"></script>
+  <script defer src="./plugins/plugin-preload.js"></script>
+  <script defer src="./plugins/plugin-survey-html-form.js"></script>
+  <script defer src="./plugins/plugin-fullscreen.js"></script>
 
-  <link rel="stylesheet" href="./jspsych.css" />
-  <link rel="icon" href="data:,">
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
-  <style>
-    html, body { height: 100svh; margin: 0; overflow: hidden; }
-
-    .jspsych-content {
-      height: 100svh;
-      max-height: 100svh;
-      box-sizing: border-box;
-      padding: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      max-width: 1000px;   /* FIX: missing semicolon in your version */
-      margin: 0 auto;
-    }
-
-    .preamble-wrap {
-      width: 100%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      overflow: hidden;
-    }
-
-    .stimulus-image {
-      max-width: 100%;
-      max-height: 100% !important;
-      width: auto; height: auto;
-      object-fit: contain;
-      border-radius: 8px;
-      display: block;
-    }
-
-    .jspsych-content form {
-      flex: 1 1 auto;
-      min-height: 0;
-      width: 100%;
-      overflow: hidden;
-    }
-
-    /* NEW: make the description under the image bold globally */
-    .stimulus-label {
-      font-weight: 800;
-    }
-
-    .q-block { border-top: 2px solid #d5d5d5; padding-top: 10px; }
-    .q { margin: 8px 0; }
-    .q-title {
-      margin: 0 0 4px;
-      font-weight: 600;
-      text-align: center;
-      font-size: clamp(12px, 1.7svh, 17px);
-    }
-
-    .slider-row { max-width: 900px; margin: 0 auto 10px; }
-    .slider { width: 98%; height: 1.2em; }
-
-    .slider-ticks {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      margin-top: 6px;
-      font-size: clamp(12px, 2.1svh, 18px);
-      line-height: 1.2;
-    }
-
-    .slider-ticks span { text-align: center; font-weight: 400; }
-    .slider-ticks small { display:block; font-size: clamp(12px, 1.8svh, 17px); font-weight: 500; }
-
-    body { font-size: clamp(12px, 4.0svh, 18px); }
-
-    .jspsych-content.instructions-mode {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      min-height: 100svh;
-      box-sizing: border-box;
-      padding: 40px 20px 90px;
-      overflow: hidden;
-      text-align: center;
-    }
-
-    .jspsych-content.instructions-mode .jspsych-instructions,
-    .jspsych-content.instructions-mode .center {
-      max-width: 800px;
-      margin: 0 auto;
-    }
-
-    .jspsych-content.instructions-mode .jspsych-instructions-nav,
-    .jspsych-content.instructions-mode .jspsych-btn {
-      position: static !important;
-      align-self: center;
-      margin-top: 20px;
-      margin-bottom: 0;
-    }
-
-    .jspsych-content.fullscreen-mode {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      min-height: 100svh;
-      box-sizing: border-box;
-      padding: 40px 20px 90px;
-      text-align: center;
-      overflow: hidden;
-    }
-
-    .fs-message {
-      max-width: 800px;
-      margin: 0 auto;
-      font-size: clamp(14px, 2svh, 18px);
-      line-height: 1.5;
-    }
-
-    .slider { accent-color: #c0c0c0; opacity: 0.5; transition: all 0.15s ease; }
-    .slider.touched { accent-color: #000000; opacity: 1; }
-  </style>
+  <!-- IMPORTANT: include experiment.js ONCE -->
+  <script defer src="./experiment.js"></script>
 </head>
 
-<body>
-  <script src="./jspsych.js"></script>
-  <script src="./plugins/plugin-instructions.js"></script>
-  <script src="./plugins/plugin-preload.js"></script>
-  <script src="./plugins/plugin-survey-html-form.js"></script>
-  <script src="./plugins/plugin-fullscreen.js"></script>
-
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-
-  <script>
-    window.FIREBASE_CONFIG = {
-      apiKey: "AIzaSyC3q8mReVXK75yirx1FM89e1y5TZyw0sIo",
-      authDomain: "my-height-study.firebaseapp.com",
-      databaseURL: "https://my-height-study-default-rtdb.firebaseio.com",
-      projectId: "my-height-study",
-      storageBucket: "my-height-study.appspot.com",
-      messagingSenderId: "623828095541",
-      appId: "1:623828095541:web:a9bf0e779534230ab7977c"
-    };
-  </script>
-
-  <script src="./experiment.js"></script>
-</body>
+<body></body>
 </html>
