@@ -5,7 +5,7 @@
  *
  * REQUIRED LINKS:
  *   ?cb=1|2|3          (condition group; fixes identity->attractiveness->label mapping)
- *   ?sc=1|2|3|4        (sentence counterbalancing cell; to get 10 per cell within each cb group)
+ *   ?sc=1|2|3|4        (sentence counterbalancing cell; to get ~10 per cell within each cb group)
  *
  * If ?cb or ?sc missing/invalid: show error screen and DO NOT start.
  *
@@ -21,13 +21,17 @@
  *   Each face_id is tied to a specific attractiveness level AND label type (varies by cb group).
  *   ONLY the order of appearance is randomized (within each block).
  *
- * SENTENCE COUNTERBALANCING (within each cb group; n=10 per sc cell):
+ * SENTENCE COUNTERBALANCING (within each cb group):
  *   Let odd faces = A,C,E = 1,3,5 and even faces = B,D,F = 2,4,6
  *
  *   sc=1: Male 1–2  (odd=S1, even=S2), Female 3–4 (odd=S3, even=S4)
  *   sc=2: Male 2–3  (odd=S2, even=S3), Female 4–1 (odd=S4, even=S1)
  *   sc=3: Male 3–4  (odd=S3, even=S4), Female 1–2 (odd=S1, even=S2)
  *   sc=4: Male 4–1  (odd=S4, even=S1), Female 2–3 (odd=S2, even=S3)
+ *
+ * NOTE (YOUR REQUEST):
+ *   Descriptions under the images MUST be bold.
+ *   We enforce this with inline style font-weight:800 (not relying on <strong>).
  *
  * CloudResearch ID:
  *   - Save once at end (saveGate)
@@ -267,18 +271,31 @@ window.addEventListener('beforeunload', beforeUnloadHandler);
    FIXED IDENTITY -> (ATTRACTIVENESS, LABEL) MAPPING BY GROUP
    ============================================================================ */
 
-// cb=3: A,B = Average->Neutral ; C,D = Unattractive->Chess ; E,F = Attractive->Basketball
 const FIXED_MAP_BY_GROUP = {
+  // Group 1:
+  // Face 1-2: Attractive -> Chess
+  // Face 3-4: Average    -> Basketball
+  // Face 5-6: Unattractive -> Neutral
   1: {
     1:{attr:'',   label:'Chess'},      2:{attr:'',   label:'Chess'},
     3:{attr:'.2', label:'Basketball'}, 4:{attr:'.2', label:'Basketball'},
     5:{attr:'.3', label:'Neutral'},    6:{attr:'.3', label:'Neutral'}
   },
+
+  // Group 2:
+  // Face 1-2: Unattractive -> Basketball
+  // Face 3-4: Attractive   -> Neutral
+  // Face 5-6: Average      -> Chess
   2: {
     1:{attr:'.3', label:'Basketball'}, 2:{attr:'.3', label:'Basketball'},
     3:{attr:'',   label:'Neutral'},    4:{attr:'',   label:'Neutral'},
     5:{attr:'.2', label:'Chess'},      6:{attr:'.2', label:'Chess'}
   },
+
+  // Group 3:
+  // Face 1-2: Average      -> Neutral
+  // Face 3-4: Unattractive -> Chess
+  // Face 5-6: Attractive   -> Basketball
   3: {
     1:{attr:'.2', label:'Neutral'},    2:{attr:'.2', label:'Neutral'},
     3:{attr:'.3', label:'Chess'},      4:{attr:'.3', label:'Chess'},
@@ -308,7 +325,6 @@ function getSentenceVersion(face_id, sexTag, sc) {
   }[sc];
 
   if (!map) return 1;
-
   if (isMaleBlock) return odd ? map.mO : map.mE;
   return odd ? map.fO : map.fE;
 }
@@ -343,6 +359,7 @@ async function buildAvailability(sexTag) {
    ============================================================================ */
 
 async function buildBlockTrialSpecsFixed(sexTag, group, sc, nameMap) {
+  // Sanity check: 4 sentences per label
   ["Chess","Basketball","Neutral"].forEach(cat => {
     const arr = LABEL_TEMPLATES[cat] || [];
     if (arr.length !== 4) throw new Error(`LABEL_TEMPLATES.${cat} must have exactly 4 sentences.`);
@@ -376,6 +393,7 @@ async function buildBlockTrialSpecsFixed(sexTag, group, sc, nameMap) {
 
     const imgPath = choice(options);
 
+    // Sentence version from sc + parity + block sex
     const label_variant = getSentenceVersion(face_id, sexTag, sc); // 1..4
     const template = LABEL_TEMPLATES[labelCategory][label_variant - 1];
     const labelText = template.replaceAll("{NAME}", name);
@@ -397,7 +415,7 @@ async function buildBlockTrialSpecsFixed(sexTag, group, sc, nameMap) {
     });
   }
 
-  // Validate: exactly 2 per attr and 2 per label per block
+  // Validate: exactly 2 per attr and 2 per label per block (given fixed maps)
   const attrCounts = { Attractive:0, Average:0, Unattractive:0 };
   const labelCounts = { Chess:0, Basketball:0, Neutral:0 };
   for (const s of specs) {
@@ -524,13 +542,17 @@ function makeImageTrial(blockLabel, spec) {
   const qTexts = isMale ? maleQuestionTexts : femaleQuestionTexts;
   const questionNames = ['Q1', 'Q2'];
 
-  // ✅ CHANGE: description is now bolded for all groups/blocks
-  <div class="stimulus-label"
-     style="max-width:900px; margin: 0 auto 12px; padding: 0 16px;
-            text-align:center; font-size:18px; line-height:1.35; color:#111;
-            font-weight: 800;">
-  ${spec.image_label_text}
-</div>
+  // ============================================================
+  // REQUIRED ADJUSTMENT: FORCE BOLD DESCRIPTION UNDER THE IMAGE
+  // We DO NOT rely on <strong> because CSS can override it.
+  // ============================================================
+  const htmlBlock = `
+    <div class="stimulus-label"
+         style="max-width:900px; margin: 0 auto 12px; padding: 0 16px;
+                text-align:center; font-size:18px; line-height:1.35; color:#111;
+                font-weight:800;">
+      ${spec.image_label_text}
+    </div>
 
     <div class="q-block">
       ${sliderHTML(questionNames[0], qTexts[0])}
@@ -850,6 +872,7 @@ function finalSave() {
       height_label: row.height_label,
       attract_label: row.attract_label,
 
+      // fixed design bookkeeping
       attract_label_fixed: row.attract_label_fixed,
       attract_code_expected: row.attract_code_expected,
 
@@ -869,7 +892,7 @@ function finalSave() {
     cb_group: jsPsych.data.get().select('counterbalance_group').values[0] ?? null,
     sentence_cell: jsPsych.data.get().select('sentence_cell').values[0] ?? null,
     trials,
-    client_version: 'fixed_identity_cb_sc_avgHeightOnly_boldDesc_v4',
+    client_version: 'fixed_identity_cb_sc_avgHeightOnly_v3_boldDesc',
     createdAt: firebase.database.ServerValue.TIMESTAMP
   };
 
@@ -904,6 +927,7 @@ function updateFirebaseWithManualCRID() {
       sentence_cell: sc
     });
 
+    // Build fixed-condition specs, then randomize order within each block
     const maleSpecs   = await buildBlockTrialSpecsFixed('M.F', group, sc, MALE_NAMES_BY_FACE);
     const femaleSpecs = await buildBlockTrialSpecsFixed('F.F', group, sc, FEMALE_NAMES_BY_FACE);
 
@@ -918,6 +942,7 @@ function updateFirebaseWithManualCRID() {
     const maleTrials   = maleSpecs.map(spec => makeImageTrial('Male', spec));
     const femaleTrials = femaleSpecs.map(spec => makeImageTrial('Female', spec));
 
+    // Randomize block order (Male vs Female)
     const blocks = jsPsych.randomization.shuffle([
       { intro: maleIntro,   trials: maleTrials },
       { intro: femaleIntro, trials: femaleTrials }
