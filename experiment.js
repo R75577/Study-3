@@ -267,15 +267,7 @@ window.addEventListener('beforeunload', beforeUnloadHandler);
    FIXED IDENTITY -> (ATTRACTIVENESS, LABEL) MAPPING BY GROUP
    ============================================================================ */
 
-function labelToShort(label) {
-  if (label === 'Chess') return 'Chess';
-  if (label === 'Basketball') return 'Basketball';
-  return 'Neutral';
-}
-
-// NOTE: You described A–F; here we map A..F -> face_ids 1..6
-// cb=3 line had a typo earlier; we implement the intended mapping:
-// Group 3: A,B = Average->Neutral ; C,D = Unattractive->Chess ; E,F = Attractive->Basketball
+// cb=3: A,B = Average->Neutral ; C,D = Unattractive->Chess ; E,F = Attractive->Basketball
 const FIXED_MAP_BY_GROUP = {
   1: {
     1:{attr:'',   label:'Chess'},      2:{attr:'',   label:'Chess'},
@@ -304,15 +296,10 @@ function attrCodeToLabel(attrCode) {
    SENTENCE CELL LOGIC (sc=1..4)
    ============================================================================ */
 
-// Returns sentence version number 1..4, based on:
-// - sc cell
-// - block sexTag (M.F vs F.F)
-// - face_id parity (odd = A,C,E ; even = B,D,F)
 function getSentenceVersion(face_id, sexTag, sc) {
   const odd = isOddFace(face_id);
   const isMaleBlock = (sexTag === 'M.F');
 
-  // For each sc, define (maleOdd, maleEven, femaleOdd, femaleEven)
   const map = {
     1: { mO:1, mE:2, fO:3, fE:4 }, // Male 1-2 ; Female 3-4
     2: { mO:2, mE:3, fO:4, fE:1 }, // Male 2-3 ; Female 4-1
@@ -356,7 +343,6 @@ async function buildAvailability(sexTag) {
    ============================================================================ */
 
 async function buildBlockTrialSpecsFixed(sexTag, group, sc, nameMap) {
-  // Sanity check: 4 sentences per label
   ["Chess","Basketball","Neutral"].forEach(cat => {
     const arr = LABEL_TEMPLATES[cat] || [];
     if (arr.length !== 4) throw new Error(`LABEL_TEMPLATES.${cat} must have exactly 4 sentences.`);
@@ -390,7 +376,6 @@ async function buildBlockTrialSpecsFixed(sexTag, group, sc, nameMap) {
 
     const imgPath = choice(options);
 
-    // Sentence version from sc + parity + block sex
     const label_variant = getSentenceVersion(face_id, sexTag, sc); // 1..4
     const template = LABEL_TEMPLATES[labelCategory][label_variant - 1];
     const labelText = template.replaceAll("{NAME}", name);
@@ -412,7 +397,7 @@ async function buildBlockTrialSpecsFixed(sexTag, group, sc, nameMap) {
     });
   }
 
-  // Validate: exactly 2 per attr and 2 per label per block (given fixed maps)
+  // Validate: exactly 2 per attr and 2 per label per block
   const attrCounts = { Attractive:0, Average:0, Unattractive:0 };
   const labelCounts = { Chess:0, Basketball:0, Neutral:0 };
   for (const s of specs) {
@@ -434,7 +419,7 @@ async function buildBlockTrialSpecsFixed(sexTag, group, sc, nameMap) {
     }
   }
 
-  // Randomize order within block (this is what you asked for)
+  // Randomize order within block
   return jsPsych.randomization.shuffle(specs);
 }
 
@@ -483,8 +468,8 @@ const instructions = {
     `<div class="center">
        <h2>Instructions</h2>
        <p><strong>In this experiment, we will ask you to put yourself in the position of a college basketball team captain and college chess team captain tasked with selecting new team members. There are male and female teams.</strong></p>
-       <p>On each screen, you will see one image, a short description of the person in the image, and two questions.</p>
-       <p><strong>Please answer the questions based on your perception of the presented image and the description.</strong></p>
+       <p>On each screen, you will see one image and two questions.</p>
+       <p><strong>Please answer the questions based on your perception of the presented image.</strong></p>
        <p>Use the 1–7 scale for each question. <strong>The scale is pre-set to 4 by default. However, you must still click or tap on your chosen response — including 4 — to record your answer</strong>.</p>
        <p>Both answers are required.</p>
      </div>`
@@ -539,11 +524,12 @@ function makeImageTrial(blockLabel, spec) {
   const qTexts = isMale ? maleQuestionTexts : femaleQuestionTexts;
   const questionNames = ['Q1', 'Q2'];
 
+  // ✅ CHANGE: description is now bolded for all groups/blocks
   const htmlBlock = `
     <div class="stimulus-label"
          style="max-width:900px; margin: 0 auto 12px; padding: 0 16px;
                 text-align:center; font-size:18px; line-height:1.35; color:#111;">
-      </strong>${spec.image_label_text}</strong>
+      <strong>${spec.image_label_text}</strong>
     </div>
 
     <div class="q-block">
@@ -864,7 +850,6 @@ function finalSave() {
       height_label: row.height_label,
       attract_label: row.attract_label,
 
-      // fixed design bookkeeping
       attract_label_fixed: row.attract_label_fixed,
       attract_code_expected: row.attract_code_expected,
 
@@ -884,7 +869,7 @@ function finalSave() {
     cb_group: jsPsych.data.get().select('counterbalance_group').values[0] ?? null,
     sentence_cell: jsPsych.data.get().select('sentence_cell').values[0] ?? null,
     trials,
-    client_version: 'fixed_identity_cb_sc_avgHeightOnly_v3',
+    client_version: 'fixed_identity_cb_sc_avgHeightOnly_boldDesc_v4',
     createdAt: firebase.database.ServerValue.TIMESTAMP
   };
 
@@ -911,7 +896,7 @@ function updateFirebaseWithManualCRID() {
 
 (async function bootstrap() {
   try {
-    const group = getCBGroupOrStop();     // REQUIRED
+    const group = getCBGroupOrStop();      // REQUIRED
     const sc    = getSentenceCellOrStop(); // REQUIRED
 
     jsPsych.data.addProperties({
@@ -919,7 +904,6 @@ function updateFirebaseWithManualCRID() {
       sentence_cell: sc
     });
 
-    // Build fixed-condition specs, then randomize order within each block
     const maleSpecs   = await buildBlockTrialSpecsFixed('M.F', group, sc, MALE_NAMES_BY_FACE);
     const femaleSpecs = await buildBlockTrialSpecsFixed('F.F', group, sc, FEMALE_NAMES_BY_FACE);
 
@@ -934,7 +918,6 @@ function updateFirebaseWithManualCRID() {
     const maleTrials   = maleSpecs.map(spec => makeImageTrial('Male', spec));
     const femaleTrials = femaleSpecs.map(spec => makeImageTrial('Female', spec));
 
-    // Randomize block order (Male vs Female)
     const blocks = jsPsych.randomization.shuffle([
       { intro: maleIntro,   trials: maleTrials },
       { intro: femaleIntro, trials: femaleTrials }
