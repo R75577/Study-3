@@ -486,8 +486,8 @@
       `<div class="center">
          <h2>Instructions</h2>
          <p><strong>In this experiment, we will ask you to put yourself in the position of a college basketball team captain and college chess team captain tasked with selecting new team members. There are male and female teams.</strong></p>
-         <p>On each screen, you will see one image and two questions.</p>
-         <p><strong>Please answer the questions based on your perception of the presented image.</strong></p>
+         <p>On each screen, you will see one image, a short description of the person in the image and two questions.</p>
+         <p><strong>Please answer the questions based on your perception of the presented image and the description.</strong></p>
          <p>Use the 1–7 scale for each question. <strong>The scale is pre-set to 4 by default. However, you must still click or tap on your chosen response — including 4 — to record your answer</strong>.</p>
          <p>Both answers are required.</p>
        </div>`
