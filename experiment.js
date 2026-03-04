@@ -546,7 +546,7 @@
     const htmlBlock = `
       <div class="stimulus-label"
            style="max-width:900px; margin: 0 auto 12px; padding: 0 16px;
-                  text-align:center; font-size:clamp(18px, 2.8svh, 20px); line-height:1.35; color:#111; font-weight:800;">
+                  text-align:center; font-size:clamp(18px, 2.8svh, 18px); line-height:1.35; color:#111; font-weight:800;">
         <strong>${spec.image_label_text}</strong>
       </div>
 
